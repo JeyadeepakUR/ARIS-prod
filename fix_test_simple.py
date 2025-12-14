@@ -1,0 +1,5 @@
+content = open('tests/test_knowledge_graph_simple.py').read()
+content = content.replace('InputInterface(max_payload_size=10000)', 'InputInterface(max_length=10000)')
+content = content.replace('match="Unknown strategy"', 'match="Unsupported strategy"')
+open('tests/test_knowledge_graph_simple.py', 'w').write(content)
+print('Fixed!')
