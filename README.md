@@ -69,6 +69,15 @@ ARIS booted
 - Gracefully skips absent sections (backward compatible with old traces)
 - JSON-serializable output for visualization or export
 
+### Module 6: Comparative Runner
+- **SystemConfig**: Describes a system variant (reasoning engine, evaluator, tools)
+- **ComparativeResult**: Groups traces by configuration name
+- **ComparativeRunner**: Executes same InputPacket across multiple configurations
+- Produces independent MemoryTrace objects per configuration
+- Isolates failures per configuration (exceptions stored, not propagated)
+- No automatic persistence, no trace merging, no aggregation
+- Preserves deterministic ordering and input identity
+
 ### Module 0: Core Infrastructure
 - **MemoryStore**: Thread-safe abstraction with two implementations:
 	- In-memory store for tests
@@ -123,22 +132,24 @@ ruff check aris
 aris/
 ├── pyproject.toml          # Project configuration and dependencies
 ├── aris/
-│   ├── __init__.py         # Package initialization
-│   ├── __main__.py         # Entry point for `python -m aris`
-│   ├── input_interface.py  # Module 1: Input validation
-│   ├── reasoning_engine.py # Module 2: Deterministic reasoning
-│   ├── evaluation.py       # Module 3: Reasoning quality scoring
-│   ├── tool.py             # Module 4: Tool abstraction layer
-│   ├── trace_replay.py     # Module 5: Trace replay engine
-│   ├── memory_store.py     # Trace persistence
-│   ├── run_loop.py         # Orchestration loop
-│   └── logging_config.py   # Deterministic logging configuration
+│   ├── __init__.py             # Package initialization
+│   ├── __main__.py             # Entry point for `python -m aris`
+│   ├── input_interface.py      # Module 1: Input validation
+│   ├── reasoning_engine.py     # Module 2: Deterministic reasoning
+│   ├── evaluation.py           # Module 3: Reasoning quality scoring
+│   ├── tool.py                 # Module 4: Tool abstraction layer
+│   ├── trace_replay.py         # Module 5: Trace replay engine
+│   ├── comparative_runner.py   # Module 6: Comparative runner
+│   ├── memory_store.py         # Trace persistence
+│   ├── run_loop.py             # Orchestration loop
+│   └── logging_config.py       # Deterministic logging configuration
 └── tests/
     ├── test_input_interface.py
     ├── test_reasoning_engine.py
     ├── test_evaluation.py
     ├── test_tool.py
     ├── test_trace_replay.py
+    ├── test_comparative_runner.py
     ├── test_memory_store.py
     └── test_run_loop.py
 ```
