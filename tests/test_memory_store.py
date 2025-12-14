@@ -114,6 +114,7 @@ class TestMemoryTrace:
             request_id=uuid.uuid4(),
             input_data={"text": "test", "extra": "data"},
             reasoning_data={"steps": ["Step 1", "Step 2"], "score": 0.9},
+            evaluation_data={"overall_score": 0.8},
             created_at=datetime.now(UTC),
         )
 
@@ -123,7 +124,39 @@ class TestMemoryTrace:
         assert restored.request_id == original.request_id
         assert restored.input_data == original.input_data
         assert restored.reasoning_data == original.reasoning_data
+        assert restored.evaluation_data == original.evaluation_data
         assert restored.created_at == original.created_at
+
+    def test_memory_trace_includes_optional_evaluation(self) -> None:
+        interface = InputInterface()
+        engine = ReasoningEngine()
+
+        packet = interface.accept("Eval input", source="test")
+        result = engine.reason(packet)
+
+        evaluation_data = {
+            "step_count_score": 0.9,
+            "coherence_score": 1.0,
+            "confidence_alignment_score": 0.8,
+            "input_coverage_score": 0.7,
+            "overall_score": 0.85,
+        }
+
+        trace = MemoryTrace.from_reasoning_result(result, evaluation=None)
+        assert trace.evaluation_data is None
+
+        trace_with_eval = MemoryTrace(
+            request_id=packet.request_id,
+            input_data=trace.input_data,
+            reasoning_data=trace.reasoning_data,
+            evaluation_data=evaluation_data,
+            created_at=trace.created_at,
+        )
+
+        trace_dict = trace_with_eval.to_dict()
+        assert "evaluation" in trace_dict
+        restored = MemoryTrace.from_dict(trace_dict)
+        assert restored.evaluation_data == evaluation_data
 
 
 class TestInMemoryStore:

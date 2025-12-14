@@ -14,8 +14,9 @@ def test_run_loop_basic() -> None:
     store = InMemoryStore()
 
     raw_inputs = ["Hello", "  world  ", "short"]
+    packets = [input_interface.accept(raw, source="test") for raw in raw_inputs]
 
-    results = run_loop(raw_inputs, input_interface, engine, store)
+    results = run_loop(packets, engine, store)
 
     # One result per input
     assert len(results) == len(raw_inputs)
@@ -40,12 +41,14 @@ def test_run_loop_determinism_same_inputs_same_conclusions() -> None:
         "This is a longer input",
         "Another sample",
     ]
+    packets1 = [input_interface.accept(raw, source="store1") for raw in inputs]
+    packets2 = [input_interface.accept(raw, source="store2") for raw in inputs]
 
     store1 = InMemoryStore()
     store2 = InMemoryStore()
 
-    results1 = run_loop(inputs, input_interface, engine, store1)
-    results2 = run_loop(inputs, input_interface, engine, store2)
+    results1 = run_loop(packets1, engine, store1)
+    results2 = run_loop(packets2, engine, store2)
 
     # Confidence scores and last steps depend only on input length/words
     conclusions1 = [r.reasoning_steps[-1] for r in results1]
@@ -63,7 +66,8 @@ def test_run_loop_stores_full_traces() -> None:
     store = InMemoryStore()
 
     raw_inputs = ["Trace test"]
-    run_loop(raw_inputs, input_interface, engine, store)
+    packets = [input_interface.accept(raw, source="trace") for raw in raw_inputs]
+    run_loop(packets, engine, store)
 
     traces = store.list_all()
     assert len(traces) == 1
@@ -78,7 +82,8 @@ def test_run_loop_prints_conclusion(capsys: object) -> None:
     engine = ReasoningEngine()
     store = InMemoryStore()
 
-    run_loop(["hello"], input_interface, engine, store)
+    packet = input_interface.accept("hello", source="capsys")
+    run_loop([packet], engine, store)
 
     captured = capsys.readouterr()  # type: ignore[attr-defined]
     # Conclusion line should be present (deterministic for single-word input)

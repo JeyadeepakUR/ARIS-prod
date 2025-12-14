@@ -13,7 +13,7 @@ The loop is deterministic by design:
 
 from collections.abc import Sequence
 
-from aris.input_interface import InputInterface, InputPacket
+from aris.input_interface import InputPacket
 from aris.memory_store import MemoryStore, MemoryTrace
 from aris.reasoning_engine import ReasoningEngine, ReasoningResult
 
@@ -31,19 +31,15 @@ def _derive_conclusion(result: ReasoningResult) -> str:
 
 
 def run_loop(
-    raw_inputs: Sequence[str],
-    input_interface: InputInterface,
+    input_packets: Sequence[InputPacket],
     reasoning_engine: ReasoningEngine,
     memory_store: MemoryStore,
-    *,
-    source: str = "user",
 ) -> list[ReasoningResult]:
     """
-    Process a sequence of raw user inputs deterministically.
+    Process a sequence of validated input packets deterministically.
 
     Args:
-        raw_inputs: Sequence of raw text inputs to process
-        input_interface: InputInterface to transform raw input into InputPacket
+        input_packets: Validated InputPacket objects to reason over
         reasoning_engine: ReasoningEngine to generate reasoning
         memory_store: MemoryStore to persist traces
 
@@ -52,8 +48,7 @@ def run_loop(
     """
     results: list[ReasoningResult] = []
 
-    for raw in raw_inputs:
-        packet: InputPacket = input_interface.accept(raw, source=source)
+    for packet in input_packets:
         result: ReasoningResult = reasoning_engine.reason(packet)
         trace: MemoryTrace = MemoryTrace.from_reasoning_result(result)
         memory_store.store(trace)

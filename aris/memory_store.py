@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from aris.evaluation import EvaluationResult
 from aris.reasoning_engine import ReasoningResult
 
 
@@ -25,6 +26,7 @@ class MemoryTrace:
         request_id: Unique identifier for this trace (from input packet)
         input_data: Dictionary representation of the input packet
         reasoning_data: Dictionary representation of the reasoning result
+        evaluation_data: Optional dictionary representation of evaluation metrics
         created_at: UTC timestamp when the trace was created
     """
 
@@ -32,9 +34,12 @@ class MemoryTrace:
     input_data: dict[str, str]
     reasoning_data: dict[str, object]
     created_at: datetime
+    evaluation_data: dict[str, float] | None = None
 
     @classmethod
-    def from_reasoning_result(cls, result: ReasoningResult) -> "MemoryTrace":
+    def from_reasoning_result(
+        cls, result: ReasoningResult, evaluation: EvaluationResult | None = None
+    ) -> "MemoryTrace":
         """
         Create a MemoryTrace from a ReasoningResult.
 
@@ -58,10 +63,21 @@ class MemoryTrace:
             "confidence_score": result.confidence_score,
         }
 
+        evaluation_data = None
+        if evaluation is not None:
+            evaluation_data = {
+                "step_count_score": evaluation.step_count_score,
+                "coherence_score": evaluation.coherence_score,
+                "confidence_alignment_score": evaluation.confidence_alignment_score,
+                "input_coverage_score": evaluation.input_coverage_score,
+                "overall_score": evaluation.overall_score,
+            }
+
         return cls(
             request_id=input_packet.request_id,
             input_data=input_data,
             reasoning_data=reasoning_data,
+            evaluation_data=evaluation_data,
             created_at=datetime.now(UTC),
         )
 
@@ -72,12 +88,17 @@ class MemoryTrace:
         Returns:
             Dictionary with request_id, input, reasoning, and created_at fields
         """
-        return {
+        data: dict[str, object] = {
             "request_id": str(self.request_id),
             "input": self.input_data,
             "reasoning": self.reasoning_data,
             "created_at": self.created_at.isoformat(),
         }
+
+        if self.evaluation_data is not None:
+            data["evaluation"] = self.evaluation_data
+
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "MemoryTrace":
@@ -93,16 +114,20 @@ class MemoryTrace:
         # Type narrowing for dict access
         input_obj = data["input"]
         reasoning_obj = data["reasoning"]
+        evaluation_obj = data.get("evaluation")
 
         if not isinstance(input_obj, dict):
             raise TypeError("input field must be a dictionary")
         if not isinstance(reasoning_obj, dict):
             raise TypeError("reasoning field must be a dictionary")
+        if evaluation_obj is not None and not isinstance(evaluation_obj, dict):
+            raise TypeError("evaluation field must be a dictionary if present")
 
         return cls(
             request_id=uuid.UUID(str(data["request_id"])),
             input_data=input_obj,
             reasoning_data=reasoning_obj,
+            evaluation_data=evaluation_obj,
             created_at=datetime.fromisoformat(str(data["created_at"])),
         )
 
