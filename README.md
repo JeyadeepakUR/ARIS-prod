@@ -16,6 +16,9 @@ venv\Scripts\activate  # On Windows
 # source venv/bin/activate  # On Unix/macOS
 
 pip install -e .
+
+# For PDF support (Module 7):
+pip install -e ".[pdf]"
 ```
 
 ## Usage
@@ -78,6 +81,17 @@ ARIS booted
 - No automatic persistence, no trace merging, no aggregation
 - Preserves deterministic ordering and input identity
 
+### Module 7: Document Ingestion & Canonicalization
+- **Document**: Immutable document with content and provenance metadata
+- **DocumentCorpus**: Collection of documents with corpus ID
+- **PlainTextLoader**: UTF-8 text file loader with line ending normalization
+- **PDFLoader**: PDF text extraction (requires pypdf optional dependency)
+- **DocumentIngestor**: Format-specific ingestion with explicit format parameter
+- **CorpusPacketizer**: Converts corpus to validated InputPacket objects
+- Batch ingestion with failure isolation
+- Reuses InputInterface validation
+- No auto-detection, no inference, no chunking
+
 ### Module 0: Core Infrastructure
 - **MemoryStore**: Thread-safe abstraction with two implementations:
 	- In-memory store for tests
@@ -132,17 +146,18 @@ ruff check aris
 aris/
 ├── pyproject.toml          # Project configuration and dependencies
 ├── aris/
-│   ├── __init__.py             # Package initialization
-│   ├── __main__.py             # Entry point for `python -m aris`
-│   ├── input_interface.py      # Module 1: Input validation
-│   ├── reasoning_engine.py     # Module 2: Deterministic reasoning
-│   ├── evaluation.py           # Module 3: Reasoning quality scoring
-│   ├── tool.py                 # Module 4: Tool abstraction layer
-│   ├── trace_replay.py         # Module 5: Trace replay engine
-│   ├── comparative_runner.py   # Module 6: Comparative runner
-│   ├── memory_store.py         # Trace persistence
-│   ├── run_loop.py             # Orchestration loop
-│   └── logging_config.py       # Deterministic logging configuration
+│   ├── __init__.py                # Package initialization
+│   ├── __main__.py                # Entry point for `python -m aris`
+│   ├── input_interface.py         # Module 1: Input validation
+│   ├── reasoning_engine.py        # Module 2: Deterministic reasoning
+│   ├── evaluation.py              # Module 3: Reasoning quality scoring
+│   ├── tool.py                    # Module 4: Tool abstraction layer
+│   ├── trace_replay.py            # Module 5: Trace replay engine
+│   ├── comparative_runner.py      # Module 6: Comparative runner
+│   ├── document_ingestion.py      # Module 7: Document ingestion
+│   ├── memory_store.py            # Trace persistence
+│   ├── run_loop.py                # Orchestration loop
+│   └── logging_config.py          # Deterministic logging configuration
 └── tests/
     ├── test_input_interface.py
     ├── test_reasoning_engine.py
@@ -150,6 +165,7 @@ aris/
     ├── test_tool.py
     ├── test_trace_replay.py
     ├── test_comparative_runner.py
+    ├── test_document_ingestion.py
     ├── test_memory_store.py
     └── test_run_loop.py
 ```
