@@ -27,6 +27,7 @@ class MemoryTrace:
         input_data: Dictionary representation of the input packet
         reasoning_data: Dictionary representation of the reasoning result
         evaluation_data: Optional dictionary representation of evaluation metrics
+        tool_calls: Optional list of tool calls made after reasoning
         created_at: UTC timestamp when the trace was created
     """
 
@@ -35,16 +36,22 @@ class MemoryTrace:
     reasoning_data: dict[str, object]
     created_at: datetime
     evaluation_data: dict[str, float] | None = None
+    tool_calls: list[dict[str, str]] | None = None
 
     @classmethod
     def from_reasoning_result(
-        cls, result: ReasoningResult, evaluation: EvaluationResult | None = None
+        cls,
+        result: ReasoningResult,
+        evaluation: EvaluationResult | None = None,
+        tool_calls: list[dict[str, str]] | None = None,
     ) -> "MemoryTrace":
         """
         Create a MemoryTrace from a ReasoningResult.
 
         Args:
             result: ReasoningResult to convert to a trace
+            evaluation: Optional evaluation metrics
+            tool_calls: Optional list of tool calls executed after reasoning
 
         Returns:
             MemoryTrace containing the reasoning result data
@@ -78,6 +85,7 @@ class MemoryTrace:
             input_data=input_data,
             reasoning_data=reasoning_data,
             evaluation_data=evaluation_data,
+            tool_calls=tool_calls,
             created_at=datetime.now(UTC),
         )
 
@@ -98,6 +106,9 @@ class MemoryTrace:
         if self.evaluation_data is not None:
             data["evaluation"] = self.evaluation_data
 
+        if self.tool_calls is not None:
+            data["tool_calls"] = self.tool_calls
+
         return data
 
     @classmethod
@@ -115,6 +126,7 @@ class MemoryTrace:
         input_obj = data["input"]
         reasoning_obj = data["reasoning"]
         evaluation_obj = data.get("evaluation")
+        tool_calls_obj = data.get("tool_calls")
 
         if not isinstance(input_obj, dict):
             raise TypeError("input field must be a dictionary")
@@ -122,12 +134,15 @@ class MemoryTrace:
             raise TypeError("reasoning field must be a dictionary")
         if evaluation_obj is not None and not isinstance(evaluation_obj, dict):
             raise TypeError("evaluation field must be a dictionary if present")
+        if tool_calls_obj is not None and not isinstance(tool_calls_obj, list):
+            raise TypeError("tool_calls field must be a list if present")
 
         return cls(
             request_id=uuid.UUID(str(data["request_id"])),
             input_data=input_obj,
             reasoning_data=reasoning_obj,
             evaluation_data=evaluation_obj,
+            tool_calls=tool_calls_obj,
             created_at=datetime.fromisoformat(str(data["created_at"])),
         )
 
