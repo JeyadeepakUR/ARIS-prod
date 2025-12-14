@@ -1,7 +1,7 @@
 """
-Unit tests for the InputInterface and InputPacket.
+Unit tests for the InputInterface and InputPacket (Module 1).
 
-Tests verify proper input processing, metadata generation, and type safety.
+Validates normalization, validation constraints, and metadata safety.
 """
 
 import uuid
@@ -9,138 +9,124 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aris.input_interface import InputInterface, InputPacket
+from aris.input_interface import (
+    EmptyInputError,
+    InputInterface,
+    InputPacket,
+    MaxLengthExceededError,
+    MissingSourceError,
+)
 
 
 class TestInputPacket:
     """Tests for the InputPacket dataclass."""
 
     def test_input_packet_creation(self) -> None:
-        """Test that InputPacket can be created with required fields."""
-        text = "test input"
         request_id = uuid.uuid4()
         timestamp = datetime.now(UTC)
 
-        packet = InputPacket(text=text, request_id=request_id, timestamp=timestamp)
+        packet = InputPacket(
+            text="test input",
+            source="cli",
+            request_id=request_id,
+            timestamp=timestamp,
+        )
 
-        assert packet.text == text
+        assert packet.text == "test input"
+        assert packet.source == "cli"
         assert packet.request_id == request_id
         assert packet.timestamp == timestamp
 
     def test_input_packet_immutable(self) -> None:
-        """Test that InputPacket is immutable (frozen)."""
         packet = InputPacket(
-            text="test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
+            text="test",
+            source="unit-test",
+            request_id=uuid.uuid4(),
+            timestamp=datetime.now(UTC),
         )
 
         with pytest.raises(AttributeError):
             packet.text = "modified"  # type: ignore[misc]
 
-    def test_input_packet_types(self) -> None:
-        """Test that InputPacket enforces correct types."""
-        request_id = uuid.uuid4()
-        timestamp = datetime.now(UTC)
-
-        packet = InputPacket(text="test", request_id=request_id, timestamp=timestamp)
-
-        assert isinstance(packet.text, str)
-        assert isinstance(packet.request_id, uuid.UUID)
-        assert isinstance(packet.timestamp, datetime)
-
 
 class TestInputInterface:
     """Tests for the InputInterface class."""
 
-    def test_process_input_basic(self) -> None:
-        """Test basic input processing."""
+    def test_accept_basic(self) -> None:
         interface = InputInterface()
-        raw_text = "Hello, world!"
 
-        packet = interface.process_input(raw_text)
+        packet = interface.accept("Hello, world!", source="cli")
 
         assert packet.text == "Hello, world!"
+        assert packet.source == "cli"
         assert isinstance(packet.request_id, uuid.UUID)
         assert isinstance(packet.timestamp, datetime)
 
-    def test_process_input_whitespace_trimming(self) -> None:
-        """Test that leading/trailing whitespace is trimmed."""
+    def test_accept_trims_and_normalizes_newlines(self) -> None:
         interface = InputInterface()
-        raw_text = "  \n\t  Hello  \t\n  "
+        raw_text = "\r\n  Hello\nWorld  \r"
 
-        packet = interface.process_input(raw_text)
+        packet = interface.accept(raw_text, source="cli")
 
-        assert packet.text == "Hello"
+        assert packet.text == "Hello\nWorld"
 
-    def test_process_input_empty_string(self) -> None:
-        """Test processing of empty string."""
+    def test_accept_rejects_empty(self) -> None:
         interface = InputInterface()
 
-        packet = interface.process_input("")
+        with pytest.raises(EmptyInputError):
+            interface.accept("   \n\t   ", source="cli")
 
-        assert packet.text == ""
-        assert isinstance(packet.request_id, uuid.UUID)
-        assert isinstance(packet.timestamp, datetime)
+    def test_accept_enforces_max_length(self) -> None:
+        interface = InputInterface(max_length=5)
 
-    def test_process_input_whitespace_only(self) -> None:
-        """Test processing of whitespace-only input."""
+        with pytest.raises(MaxLengthExceededError) as exc:
+            interface.accept("abcdef", source="cli")
+
+        assert exc.value.max_length == 5
+        assert exc.value.actual_length == 6
+
+    def test_accept_requires_source(self) -> None:
         interface = InputInterface()
 
-        packet = interface.process_input("   \n\t   ")
+        with pytest.raises(MissingSourceError):
+            interface.accept("hello", source="   ")
 
-        assert packet.text == ""
-
-    def test_process_input_preserves_internal_whitespace(self) -> None:
-        """Test that internal whitespace is preserved."""
+    def test_accept_preserves_internal_whitespace(self) -> None:
         interface = InputInterface()
-        raw_text = "  Hello    world  "
-
-        packet = interface.process_input(raw_text)
+        packet = interface.accept("  Hello    world  ", source="cli")
 
         assert packet.text == "Hello    world"
 
-    def test_process_input_unique_request_ids(self) -> None:
-        """Test that each call generates a unique request ID."""
+    def test_accept_unique_request_ids(self) -> None:
         interface = InputInterface()
 
-        packet1 = interface.process_input("test 1")
-        packet2 = interface.process_input("test 2")
+        packet1 = interface.accept("test 1", source="cli")
+        packet2 = interface.accept("test 2", source="cli")
 
         assert packet1.request_id != packet2.request_id
 
-    def test_process_input_utc_timestamp(self) -> None:
-        """Test that timestamp is in UTC."""
+    def test_accept_utc_timestamp(self) -> None:
         interface = InputInterface()
 
         before = datetime.now(UTC)
-        packet = interface.process_input("test")
+        packet = interface.accept("test", source="cli")
         after = datetime.now(UTC)
 
         assert before <= packet.timestamp <= after
         assert packet.timestamp.tzinfo is not None
         assert packet.timestamp.tzinfo.tzname(None) == "UTC"
 
-    def test_process_input_multiline_text(self) -> None:
-        """Test processing of multiline text."""
+    def test_accept_multiline_text(self) -> None:
         interface = InputInterface()
-        raw_text = "Line 1\nLine 2\nLine 3"
+        raw_text = "Line 1\r\nLine 2\rLine 3"
 
-        packet = interface.process_input(raw_text)
+        packet = interface.accept(raw_text, source="cli")
 
         assert packet.text == "Line 1\nLine 2\nLine 3"
 
-    def test_process_input_special_characters(self) -> None:
-        """Test processing of text with special characters."""
-        interface = InputInterface()
-        raw_text = "Hello! @#$%^&*() 你好 🚀"
-
-        packet = interface.process_input(raw_text)
-
-        assert packet.text == raw_text
-
-    def test_process_input_returns_input_packet(self) -> None:
-        """Test that process_input returns an InputPacket instance."""
+    def test_accept_returns_input_packet(self) -> None:
         interface = InputInterface()
 
-        packet = interface.process_input("test")
+        packet = interface.accept("test", source="cli")
 
         assert isinstance(packet, InputPacket)

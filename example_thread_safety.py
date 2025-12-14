@@ -28,7 +28,7 @@ def test_concurrent_operations(store_name: str) -> None:
     def worker(thread_id: int) -> None:
         """Worker function that stores multiple traces."""
         for i in range(5):
-            packet = input_interface.process_input(f"Thread {thread_id}, message {i}")
+            packet = input_interface.accept(f"Thread {thread_id}, message {i}", source=store_name)
             result = reasoning_engine.reason(packet)
             trace = MemoryTrace.from_reasoning_result(result)
             store.store(trace)

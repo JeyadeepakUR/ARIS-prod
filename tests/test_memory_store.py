@@ -63,7 +63,7 @@ class TestMemoryTrace:
         interface = InputInterface()
         engine = ReasoningEngine()
 
-        packet = interface.process_input("Test input")
+        packet = interface.accept("Test input", source="test")
         result = engine.reason(packet)
 
         trace = MemoryTrace.from_reasoning_result(result)

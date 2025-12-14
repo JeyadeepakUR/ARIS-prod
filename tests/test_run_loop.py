@@ -13,7 +13,7 @@ def test_run_loop_basic() -> None:
     engine = ReasoningEngine()
     store = InMemoryStore()
 
-    raw_inputs = ["Hello", "  world  ", ""]
+    raw_inputs = ["Hello", "  world  ", "short"]
 
     results = run_loop(raw_inputs, input_interface, engine, store)
 
@@ -27,7 +27,7 @@ def test_run_loop_basic() -> None:
     # Verify trimming and deterministic conclusion (last step present)
     assert results[0].input_packet.text == "Hello"
     assert results[1].input_packet.text == "world"
-    assert results[2].input_packet.text == ""
+    assert results[2].input_packet.text == "short"
     assert isinstance(results[0].reasoning_steps[-1], str)
 
 
@@ -38,7 +38,7 @@ def test_run_loop_determinism_same_inputs_same_conclusions() -> None:
     inputs = [
         "Short",
         "This is a longer input",
-        "",
+        "Another sample",
     ]
 
     store1 = InMemoryStore()

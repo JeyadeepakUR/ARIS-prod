@@ -35,6 +35,8 @@ def run_loop(
     input_interface: InputInterface,
     reasoning_engine: ReasoningEngine,
     memory_store: MemoryStore,
+    *,
+    source: str = "user",
 ) -> list[ReasoningResult]:
     """
     Process a sequence of raw user inputs deterministically.
@@ -51,7 +53,7 @@ def run_loop(
     results: list[ReasoningResult] = []
 
     for raw in raw_inputs:
-        packet: InputPacket = input_interface.process_input(raw)
+        packet: InputPacket = input_interface.accept(raw, source=source)
         result: ReasoningResult = reasoning_engine.reason(packet)
         trace: MemoryTrace = MemoryTrace.from_reasoning_result(result)
         memory_store.store(trace)

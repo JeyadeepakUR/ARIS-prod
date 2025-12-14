@@ -18,7 +18,7 @@ def main() -> None:
     print("=" * 70)
     print("Example 1: Simple query")
     print("=" * 70)
-    packet1 = input_interface.process_input("Hello")
+    packet1 = input_interface.accept("Hello, ARIS!", source="example")
     result1 = reasoning_engine.reason(packet1)
     print(f"Input: '{result1.input_packet.text}'")
     print(f"Confidence: {result1.confidence_score:.2f}")
@@ -31,7 +31,7 @@ def main() -> None:
     print("=" * 70)
     print("Example 2: Empty input")
     print("=" * 70)
-    packet2 = input_interface.process_input("")
+    packet2 = input_interface.accept("Empty input replaced", source="example")
     result2 = reasoning_engine.reason(packet2)
     print(f"Input: '{result2.input_packet.text}'")
     print(f"Confidence: {result2.confidence_score:.2f}")
@@ -44,7 +44,7 @@ def main() -> None:
     print("=" * 70)
     print("Example 3: Short phrase")
     print("=" * 70)
-    packet3 = input_interface.process_input("What is AI?")
+    packet3 = input_interface.accept("  \n  Trimmed input  \t  ", source="example")
     result3 = reasoning_engine.reason(packet3)
     print(f"Input: '{result3.input_packet.text}'")
     print(f"Confidence: {result3.confidence_score:.2f}")
@@ -57,9 +57,7 @@ def main() -> None:
     print("=" * 70)
     print("Example 4: Longer detailed input")
     print("=" * 70)
-    packet4 = input_interface.process_input(
-        "Can you explain how the reasoning engine works and what confidence scores mean?"
-    )
+    packet4 = input_interface.accept("Line 1\nLine 2\nLine 3", source="example")
     result4 = reasoning_engine.reason(packet4)
     print(f"Input: '{result4.input_packet.text}'")
     print(f"Confidence: {result4.confidence_score:.2f}")
@@ -76,7 +74,7 @@ def main() -> None:
 1. First step
 2. Second step
 3. Third step"""
-    packet5 = input_interface.process_input(multiline_text)
+    packet5 = input_interface.accept(multiline_text, source="example")
     result5 = reasoning_engine.reason(packet5)
     print(f"Input (first 50 chars): '{result5.input_packet.text[:50]}...'")
     print(f"Confidence: {result5.confidence_score:.2f}")

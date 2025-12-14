@@ -13,14 +13,21 @@ from aris.input_interface import InputPacket
 from aris.reasoning_engine import ReasoningEngine, ReasoningResult
 
 
+def _make_packet(text: str) -> InputPacket:
+    return InputPacket(
+        text=text,
+        source="unit-test",
+        request_id=uuid.uuid4(),
+        timestamp=datetime.now(UTC),
+    )
+
+
 class TestReasoningResult:
     """Tests for the ReasoningResult dataclass."""
 
     def test_reasoning_result_creation(self) -> None:
         """Test that ReasoningResult can be created with required fields."""
-        input_packet = InputPacket(
-            text="test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("test")
         steps = ["Step 1", "Step 2", "Step 3"]
         confidence = 0.85
 
@@ -34,9 +41,7 @@ class TestReasoningResult:
 
     def test_reasoning_result_immutable(self) -> None:
         """Test that ReasoningResult is immutable (frozen)."""
-        input_packet = InputPacket(
-            text="test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("test")
         result = ReasoningResult(
             reasoning_steps=["Step 1"],
             confidence_score=0.5,
@@ -48,9 +53,7 @@ class TestReasoningResult:
 
     def test_reasoning_result_confidence_validation_low(self) -> None:
         """Test that confidence score below 0.0 raises ValueError."""
-        input_packet = InputPacket(
-            text="test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("test")
 
         with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
             ReasoningResult(
@@ -61,9 +64,7 @@ class TestReasoningResult:
 
     def test_reasoning_result_confidence_validation_high(self) -> None:
         """Test that confidence score above 1.0 raises ValueError."""
-        input_packet = InputPacket(
-            text="test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("test")
 
         with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
             ReasoningResult(
@@ -74,9 +75,7 @@ class TestReasoningResult:
 
     def test_reasoning_result_confidence_edge_cases(self) -> None:
         """Test that confidence score at 0.0 and 1.0 are valid."""
-        input_packet = InputPacket(
-            text="test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("test")
 
         # Test 0.0
         result_min = ReasoningResult(
@@ -101,9 +100,7 @@ class TestReasoningEngine:
     def test_reason_basic(self) -> None:
         """Test basic reasoning functionality."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="Hello world", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("Hello world")
 
         result = engine.reason(input_packet)
 
@@ -117,9 +114,7 @@ class TestReasoningEngine:
     def test_reason_steps_are_strings(self) -> None:
         """Test that all reasoning steps are strings."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="test input", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("test input")
 
         result = engine.reason(input_packet)
 
@@ -130,9 +125,7 @@ class TestReasoningEngine:
     def test_reason_empty_input(self) -> None:
         """Test reasoning with empty input."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("")
 
         result = engine.reason(input_packet)
 
@@ -143,9 +136,7 @@ class TestReasoningEngine:
     def test_reason_single_word(self) -> None:
         """Test reasoning with single word input."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="hello", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("hello")
 
         result = engine.reason(input_packet)
 
@@ -155,11 +146,7 @@ class TestReasoningEngine:
     def test_reason_multi_word(self) -> None:
         """Test reasoning with multi-word input."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="This is a longer test input with many words",
-            request_id=uuid.uuid4(),
-            timestamp=datetime.now(UTC),
-        )
+        input_packet = _make_packet("This is a longer test input with many words")
 
         result = engine.reason(input_packet)
 
@@ -172,12 +159,8 @@ class TestReasoningEngine:
         text = "Test input for consistency"
 
         # Create two different input packets with same text
-        packet1 = InputPacket(
-            text=text, request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
-        packet2 = InputPacket(
-            text=text, request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        packet1 = _make_packet(text)
+        packet2 = _make_packet(text)
 
         result1 = engine.reason(packet1)
         result2 = engine.reason(packet2)
@@ -188,9 +171,7 @@ class TestReasoningEngine:
     def test_confidence_score_empty_input(self) -> None:
         """Test that empty input has low confidence."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("")
 
         result = engine.reason(input_packet)
 
@@ -199,9 +180,7 @@ class TestReasoningEngine:
     def test_confidence_score_short_input(self) -> None:
         """Test that short input has moderate confidence."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="Hi", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("Hi")
 
         result = engine.reason(input_packet)
 
@@ -214,9 +193,7 @@ class TestReasoningEngine:
             "This is a much longer input string that contains many characters and "
             "should result in a higher confidence score from the reasoning engine."
         )
-        input_packet = InputPacket(
-            text=long_text, request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet(long_text)
 
         result = engine.reason(input_packet)
 
@@ -227,7 +204,10 @@ class TestReasoningEngine:
         engine = ReasoningEngine()
         request_id = uuid.uuid4()
         input_packet = InputPacket(
-            text="test", request_id=request_id, timestamp=datetime.now(UTC)
+            text="test",
+            source="unit-test",
+            request_id=request_id,
+            timestamp=datetime.now(UTC),
         )
 
         result = engine.reason(input_packet)
@@ -240,7 +220,10 @@ class TestReasoningEngine:
         engine = ReasoningEngine()
         timestamp = datetime.now(UTC)
         input_packet = InputPacket(
-            text="test", request_id=uuid.uuid4(), timestamp=timestamp
+            text="test",
+            source="unit-test",
+            request_id=uuid.uuid4(),
+            timestamp=timestamp,
         )
 
         result = engine.reason(input_packet)
@@ -251,9 +234,7 @@ class TestReasoningEngine:
     def test_reason_includes_input_characteristics(self) -> None:
         """Test that reasoning steps include input text characteristics."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="Hello world test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("Hello world test")
 
         result = engine.reason(input_packet)
 
@@ -264,9 +245,7 @@ class TestReasoningEngine:
     def test_reason_api_stability(self) -> None:
         """Test that the API returns expected types for future LLM compatibility."""
         engine = ReasoningEngine()
-        input_packet = InputPacket(
-            text="API stability test", request_id=uuid.uuid4(), timestamp=datetime.now(UTC)
-        )
+        input_packet = _make_packet("API stability test")
 
         # This is the stable API contract
         result: ReasoningResult = engine.reason(input_packet)

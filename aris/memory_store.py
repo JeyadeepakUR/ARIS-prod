@@ -50,6 +50,7 @@ class MemoryTrace:
             "text": input_packet.text,
             "request_id": str(input_packet.request_id),
             "timestamp": input_packet.timestamp.isoformat(),
+            "source": input_packet.source,
         }
 
         reasoning_data = {

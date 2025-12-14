@@ -46,7 +46,7 @@ def demonstrate_store(store: MemoryStore, store_name: str) -> None:
 
     for text in inputs:
         # Full pipeline: input -> reasoning -> storage
-        packet = input_interface.process_input(text)
+        packet = input_interface.accept(text, source="example")
         result = reasoning_engine.reason(packet)
         trace = MemoryTrace.from_reasoning_result(result)
 
@@ -91,7 +91,7 @@ def demonstrate_json_format() -> None:
         input_interface = InputInterface()
         reasoning_engine = ReasoningEngine()
 
-        packet = input_interface.process_input("Sample input for JSON demo")
+        packet = input_interface.accept("Sample input for JSON demo", source="example")
         result = reasoning_engine.reason(packet)
         trace = MemoryTrace.from_reasoning_result(result)
 
@@ -123,7 +123,7 @@ def demonstrate_persistence() -> None:
         input_interface = InputInterface()
         reasoning_engine = ReasoningEngine()
 
-        packet = input_interface.process_input("Persistent data test")
+        packet = input_interface.accept("Persistent data test", source="example")
         result = reasoning_engine.reason(packet)
         trace = MemoryTrace.from_reasoning_result(result)
 
