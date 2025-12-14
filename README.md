@@ -92,6 +92,14 @@ ARIS booted
 - Reuses InputInterface validation
 - No auto-detection, no inference, no chunking
 
+### Module 8: Knowledge Graph & Cross-Document Linking
+- **Node / Edge / KnowledgeGraph**: Frozen dataclasses for immutable graph structures with explicit evidence on every edge
+- **LinkCandidate**: Immutable proposed link holding source/target docs, type, hint, metadata
+- **Linker**: Deterministic candidate generation (keyword overlap, metadata match, sequential); no embeddings or hidden heuristics
+- **LinkMaterializer**: Runs ReasoningEngine + Evaluator to justify candidates, require evidence, score confidence, and reject low-score links without mutating the corpus
+- **Helpers**: build_graph_from_corpus (nodes only) and add_edges_to_graph (immutable merge)
+- Guarantees: deterministic behavior, evidence completeness, input immutability, graph integrity
+
 ### Module 0: Core Infrastructure
 - **MemoryStore**: Thread-safe abstraction with two implementations:
 	- In-memory store for tests
@@ -155,6 +163,7 @@ aris/
 │   ├── trace_replay.py            # Module 5: Trace replay engine
 │   ├── comparative_runner.py      # Module 6: Comparative runner
 │   ├── document_ingestion.py      # Module 7: Document ingestion
+│   ├── knowledge_graph.py         # Module 8: Knowledge graph & linking
 │   ├── memory_store.py            # Trace persistence
 │   ├── run_loop.py                # Orchestration loop
 │   └── logging_config.py          # Deterministic logging configuration
@@ -166,6 +175,8 @@ aris/
     ├── test_trace_replay.py
     ├── test_comparative_runner.py
     ├── test_document_ingestion.py
+	├── test_knowledge_graph.py
+	├── test_knowledge_graph_simple.py
     ├── test_memory_store.py
     └── test_run_loop.py
 ```
