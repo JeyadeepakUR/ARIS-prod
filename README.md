@@ -100,6 +100,16 @@ ARIS booted
 - **Helpers**: build_graph_from_corpus (nodes only) and add_edges_to_graph (immutable merge)
 - Guarantees: deterministic behavior, evidence completeness, input immutability, graph integrity
 
+### Module 9: Research Planner
+- **ResearchAction**: Frozen action proposal with deterministic UUID, type, evidence, rationale, priority [0.0, 1.0]
+- **PlannerContext**: Frozen context holding graph, strategy, max_actions limit
+- **ResearchPlanner**: Stateless planner with three explicit strategies:
+  - Gap-driven: identifies isolated/weakly-connected nodes
+  - Contradiction-driven: detects conflicting edge types between node pairs
+  - Weak-evidence refinement: finds low-confidence or sparse-evidence edges
+- Deterministic ranking by priority desc → action_type → description → action_id
+- Guarantees: no execution, no mutation, no autonomy loops, no learning/optimization
+
 ### Module 0: Core Infrastructure
 - **MemoryStore**: Thread-safe abstraction with two implementations:
 	- In-memory store for tests
@@ -164,6 +174,7 @@ aris/
 │   ├── comparative_runner.py      # Module 6: Comparative runner
 │   ├── document_ingestion.py      # Module 7: Document ingestion
 │   ├── knowledge_graph.py         # Module 8: Knowledge graph & linking
+│   ├── research_planner.py        # Module 9: Policy-bounded research planner
 │   ├── memory_store.py            # Trace persistence
 │   ├── run_loop.py                # Orchestration loop
 │   └── logging_config.py          # Deterministic logging configuration
@@ -177,6 +188,7 @@ aris/
     ├── test_document_ingestion.py
 	├── test_knowledge_graph.py
 	├── test_knowledge_graph_simple.py
+	├── test_research_planner.py
     ├── test_memory_store.py
     └── test_run_loop.py
 ```
