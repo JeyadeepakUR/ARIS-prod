@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aris.input_interface import InputPacket
-from aris.reasoning_engine import ReasoningEngine, ReasoningResult
+from aris.core.input_interface import InputPacket
+from aris.core.reasoning_engine import ReasoningEngine, ReasoningResult
 
 
 def _make_packet(text: str) -> InputPacket:

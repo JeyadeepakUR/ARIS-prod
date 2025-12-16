@@ -8,11 +8,11 @@ producing independent MemoryTrace objects without merging or aggregation.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from aris.evaluation import EvaluationResult, Evaluator
-from aris.input_interface import InputPacket
-from aris.memory_store import MemoryTrace
-from aris.reasoning_engine import ReasoningEngine, ReasoningResult
-from aris.tool import ToolRegistry
+from aris.core.evaluation import EvaluationResult, Evaluator
+from aris.core.input_interface import InputPacket
+from aris.core.memory_store import MemoryTrace
+from aris.core.reasoning_engine import ReasoningEngine, ReasoningResult
+from aris.core.tool import ToolRegistry
 
 
 @dataclass(frozen=True)

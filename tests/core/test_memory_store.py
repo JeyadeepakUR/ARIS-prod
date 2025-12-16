@@ -14,14 +14,14 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from aris.input_interface import InputInterface
-from aris.memory_store import (
+from aris.core.input_interface import InputInterface
+from aris.core.memory_store import (
     FileBackedMemoryStore,
     InMemoryStore,
     MemoryStore,
     MemoryTrace,
 )
-from aris.reasoning_engine import ReasoningEngine
+from aris.core.reasoning_engine import ReasoningEngine
 
 
 class TestMemoryTrace:

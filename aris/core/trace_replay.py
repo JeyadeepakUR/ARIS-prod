@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from aris.memory_store import MemoryTrace
+from aris.core.memory_store import MemoryTrace
 
 
 @dataclass(frozen=True)

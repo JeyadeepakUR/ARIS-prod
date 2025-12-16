@@ -5,11 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from aris.input_interface import InputPacket
-from aris.memory_store import InMemoryStore, MemoryTrace
-from aris.reasoning_engine import ReasoningEngine
-from aris.run_loop import run_loop
-from aris.tool import EchoTool, ToolRegistry, WordCountTool
+from aris.core.input_interface import InputPacket
+from aris.core.memory_store import InMemoryStore, MemoryTrace
+from aris.core.reasoning_engine import ReasoningEngine
+from aris.core.run_loop import run_loop
+from aris.core.tool import EchoTool, ToolRegistry, WordCountTool
 
 
 class TestTool:

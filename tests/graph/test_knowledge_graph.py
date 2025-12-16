@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import datetime, UTC
 from typing import List
 
-from aris.knowledge_graph import (
+from aris.graph.knowledge_graph import (
     Node,
     Edge,
     KnowledgeGraph,
@@ -16,10 +16,10 @@ from aris.knowledge_graph import (
     build_graph_from_corpus,
     add_edges_to_graph,
 )
-from aris.document_ingestion import Document, DocumentCorpus
-from aris.reasoning_engine import ReasoningEngine, ReasoningResult
-from aris.evaluation import Evaluator, EvaluationResult
-from aris.input_interface import InputPacket, InputInterface
+from aris.graph.document_ingestion import Document, DocumentCorpus
+from aris.core.reasoning_engine import ReasoningEngine, ReasoningResult
+from aris.core.evaluation import Evaluator, EvaluationResult
+from aris.core.input_interface import InputPacket, InputInterface
 
 
 # -----------------------------------------------------------------------------

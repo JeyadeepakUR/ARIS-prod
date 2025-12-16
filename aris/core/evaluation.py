@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from aris.reasoning_engine import ReasoningResult
+from aris.core.reasoning_engine import ReasoningResult
 
 
 @dataclass(frozen=True)

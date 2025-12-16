@@ -8,7 +8,7 @@ reasoning to replace the deterministic templates without refactoring callers.
 
 from dataclasses import dataclass
 
-from aris.input_interface import InputPacket
+from aris.core.input_interface import InputPacket
 
 
 @dataclass(frozen=True)

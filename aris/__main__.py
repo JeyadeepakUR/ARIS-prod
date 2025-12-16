@@ -6,10 +6,10 @@ import argparse
 import sys
 from pathlib import Path
 
-from aris.input_interface import InputError, InputInterface
-from aris.memory_store import InMemoryStore
-from aris.reasoning_engine import ReasoningEngine
-from aris.run_loop import run_loop
+from aris.core.input_interface import InputError, InputInterface
+from aris.core.memory_store import InMemoryStore
+from aris.core.reasoning_engine import ReasoningEngine
+from aris.core.run_loop import run_loop
 
 __all__ = [
     "main",

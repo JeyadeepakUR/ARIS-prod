@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from aris.input_interface import InputInterface, InputPacket
+from aris.core.input_interface import InputInterface, InputPacket
 
 
 @dataclass(frozen=True)

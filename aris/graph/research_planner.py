@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Iterable
 
-from aris.knowledge_graph import Edge, KnowledgeGraph
+from aris.graph.knowledge_graph import Edge, KnowledgeGraph
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class ResearchAction:
     priority: float
     metadata: dict[str, str]
 
-    def __post_init__(self) -> None:  # type: ignore[override]
+    def __post_init__(self) -> None:
         # Enforce bounds and completeness deterministically
         if not 0.0 <= self.priority <= 1.0:
             raise ValueError(f"priority must be within [0.0, 1.0], got {self.priority}")
@@ -279,7 +279,7 @@ class ResearchPlanner:
 
     def _pair_key(self, e: Edge) -> tuple[uuid.UUID, uuid.UUID]:
         a, b = e.source_id, e.target_id
-        return (a, b) if a.int <= b.int else (b, a)
+        return (a, b) if a <= b else (b, a)
 
     def _deterministic_id(self, graph_id: uuid.UUID, name: str) -> uuid.UUID:
         # Use a stable namespace derived from the graph ID to avoid collisions across graphs

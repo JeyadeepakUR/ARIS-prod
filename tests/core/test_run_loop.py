@@ -2,10 +2,10 @@
 Unit tests for the deterministic run loop.
 """
 
-from aris.input_interface import InputInterface
-from aris.memory_store import InMemoryStore
-from aris.reasoning_engine import ReasoningEngine
-from aris.run_loop import run_loop
+from aris.core.input_interface import InputInterface
+from aris.core.memory_store import InMemoryStore
+from aris.core.reasoning_engine import ReasoningEngine
+from aris.core.run_loop import run_loop
 
 
 def test_run_loop_basic() -> None:

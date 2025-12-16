@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from aris.document_ingestion import (
+from aris.graph.document_ingestion import (
     CorpusPacketizer,
     Document,
     DocumentCorpus,
@@ -18,7 +18,7 @@ from aris.document_ingestion import (
     PlainTextLoader,
     create_corpus,
 )
-from aris.input_interface import InputPacket, InputValidationError
+from aris.core.input_interface import InputPacket, InputValidationError
 
 
 class TestDocument:

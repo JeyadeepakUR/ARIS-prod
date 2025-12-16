@@ -5,12 +5,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from aris.comparative_runner import ComparativeResult, ComparativeRunner, SystemConfig
-from aris.evaluation import Evaluator
-from aris.input_interface import InputPacket
-from aris.memory_store import MemoryTrace
-from aris.reasoning_engine import ReasoningEngine
-from aris.tool import EchoTool, ToolRegistry, WordCountTool
+from aris.core.comparative_runner import ComparativeResult, ComparativeRunner, SystemConfig
+from aris.core.evaluation import Evaluator
+from aris.core.input_interface import InputPacket
+from aris.core.memory_store import MemoryTrace
+from aris.core.reasoning_engine import ReasoningEngine
+from aris.core.tool import EchoTool, ToolRegistry, WordCountTool
 
 
 class TestSystemConfig:
@@ -301,7 +301,7 @@ class TestComparativeRunner:
 
     def test_failure_isolation(self) -> None:
         """Exception in one config doesn't affect others."""
-        from aris.reasoning_engine import ReasoningResult
+        from aris.core.reasoning_engine import ReasoningResult
 
         class FailingEngine(ReasoningEngine):
             def reason(self, input_packet: InputPacket) -> ReasoningResult:
@@ -331,7 +331,7 @@ class TestComparativeRunner:
 
     def test_all_configs_fail(self) -> None:
         """All configs can fail independently."""
-        from aris.reasoning_engine import ReasoningResult
+        from aris.core.reasoning_engine import ReasoningResult
 
         class FailEngine1(ReasoningEngine):
             def reason(self, input_packet: InputPacket) -> ReasoningResult:

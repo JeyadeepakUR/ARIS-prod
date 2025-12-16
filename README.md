@@ -2,6 +2,12 @@
 
 A clean, production-ready Python system with deterministic logging, strict type hints, and clear module boundaries.
 
+## Phase Status
+
+**Phase 1 (SEALED)**: Deterministic research intelligence substrate (Modules 0–9). No ML dependencies. Reproducible. Falsifiable. See [PHASE_1_CONTRACT.md](PHASE_1_CONTRACT.md).
+
+**Phase 2 (PENDING)**: ML-augmented extensions (Modules 10–13: SciBERT roles, clustering, embedding hypothesis, SRL). Awaiting user signal. Isolated in `aris.ml`.
+
 ## Requirements
 
 - Python 3.11 or higher
@@ -162,40 +168,53 @@ ruff check aris
 
 ```
 aris/
-├── pyproject.toml          # Project configuration and dependencies
+├── pyproject.toml
 ├── aris/
-│   ├── __init__.py                # Package initialization
-│   ├── __main__.py                # Entry point for `python -m aris`
-│   ├── input_interface.py         # Module 1: Input validation
-│   ├── reasoning_engine.py        # Module 2: Deterministic reasoning
-│   ├── evaluation.py              # Module 3: Reasoning quality scoring
-│   ├── tool.py                    # Module 4: Tool abstraction layer
-│   ├── trace_replay.py            # Module 5: Trace replay engine
-│   ├── comparative_runner.py      # Module 6: Comparative runner
-│   ├── document_ingestion.py      # Module 7: Document ingestion
-│   ├── knowledge_graph.py         # Module 8: Knowledge graph & linking
-│   ├── research_planner.py        # Module 9: Policy-bounded research planner
-│   ├── memory_store.py            # Trace persistence
-│   ├── run_loop.py                # Orchestration loop
-│   └── logging_config.py          # Deterministic logging configuration
+│   ├── __init__.py, __main__.py, logging_config.py
+│   ├── core/                      # Phase 1: Modules 0, 1-6
+│   │   ├── __init__.py
+│   │   ├── input_interface.py     # Module 1: Input validation
+│   │   ├── reasoning_engine.py    # Module 2: Deterministic reasoning
+│   │   ├── evaluation.py          # Module 3: Evaluation heuristics
+│   │   ├── tool.py                # Module 4: Tool abstraction
+│   │   ├── trace_replay.py        # Module 5: Trace replay
+│   │   ├── comparative_runner.py  # Module 6: Comparative runner
+│   │   ├── memory_store.py        # Module 0: Trace persistence
+│   │   └── run_loop.py            # Module 0: Orchestration
+│   ├── graph/                     # Phase 1: Modules 7-9
+│   │   ├── __init__.py
+│   │   ├── document_ingestion.py  # Module 7: Document ingestion
+│   │   ├── knowledge_graph.py     # Module 8: Knowledge graph & linking
+│   │   └── research_planner.py    # Module 9: Research planning
+│   └── ml/                        # Phase 2: Modules 10-13 (pending)
+│       ├── __init__.py
+│       ├── sciebert_roles.py      # Module 10 (placeholder)
+│       ├── ontology_clustering.py # Module 11 (placeholder)
+│       ├── embedding_hypothesis.py # Module 12 (placeholder)
+│       └── semantic_roles.py      # Module 13 (placeholder)
 └── tests/
-    ├── test_input_interface.py
-    ├── test_reasoning_engine.py
-    ├── test_evaluation.py
-    ├── test_tool.py
-    ├── test_trace_replay.py
-    ├── test_comparative_runner.py
-    ├── test_document_ingestion.py
-	├── test_knowledge_graph.py
-	├── test_knowledge_graph_simple.py
-	├── test_research_planner.py
-    ├── test_memory_store.py
-    └── test_run_loop.py
+    ├── core/                      # Phase 1: Modules 0, 1-6 tests
+    │   ├── test_input_interface.py
+    │   ├── test_reasoning_engine.py
+    │   ├── test_evaluation.py
+    │   ├── test_tool.py
+    │   ├── test_trace_replay.py
+    │   ├── test_comparative_runner.py
+    │   ├── test_memory_store.py
+    │   └── test_run_loop.py
+    ├── graph/                     # Phase 1: Modules 7-9 tests
+    │   ├── test_document_ingestion.py
+    │   ├── test_knowledge_graph.py
+    │   ├── test_knowledge_graph_simple.py
+    │   └── test_research_planner.py
+    └── ml/                        # Phase 2: Modules 10-13 tests (pending)
+        ├── test_sciebert_roles.py
+        ├── test_ontology_clustering.py
+        ├── test_embedding_hypothesis.py
+        └── test_semantic_roles.py
 ```
 
-## Design Principles
-
-- **Zero unnecessary dependencies**: Only stdlib for core functionality
+**Governance**: Phase 1 is sealed. Phase 2 is isolated in `aris.ml`. See [PHASE_1_CONTRACT.md](PHASE_1_CONTRACT.md).
 - **Strict type hints**: Full mypy strict mode compliance
 - **Deterministic logging**: Consistent, reproducible log output
 - **Clear module boundaries**: Well-defined separation of concerns

@@ -6,8 +6,8 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from aris.memory_store import MemoryTrace
-from aris.trace_replay import ReplayEngine, ReplayFrame, TraceReplay
+from aris.core.memory_store import MemoryTrace
+from aris.core.trace_replay import ReplayEngine, ReplayFrame, TraceReplay
 
 
 class TestReplayFrame:
@@ -575,8 +575,8 @@ class TestReplayEngine:
 
     def test_replay_from_real_trace(self) -> None:
         """Replay a trace built from actual reasoning engine."""
-        from aris.input_interface import InputPacket
-        from aris.reasoning_engine import ReasoningEngine as EngineForReasoning
+        from aris.core.input_interface import InputPacket
+        from aris.core.reasoning_engine import ReasoningEngine as EngineForReasoning
 
         engine = ReplayEngine()
         reasoning_engine = EngineForReasoning()

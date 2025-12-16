@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from aris.evaluation import EvaluationResult
-from aris.reasoning_engine import ReasoningResult
+from aris.core.evaluation import EvaluationResult
+from aris.core.reasoning_engine import ReasoningResult
 
 
 @dataclass(frozen=True)

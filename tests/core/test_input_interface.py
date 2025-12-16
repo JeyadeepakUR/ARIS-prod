@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aris.input_interface import (
+from aris.core.input_interface import (
     EmptyInputError,
     InputInterface,
     InputPacket,

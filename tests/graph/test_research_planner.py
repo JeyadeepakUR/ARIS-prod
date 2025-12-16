@@ -5,9 +5,9 @@ from __future__ import annotations
 import uuid as uuid_module
 from datetime import UTC, datetime
 
-from aris.document_ingestion import Document, DocumentCorpus
-from aris.knowledge_graph import Edge, KnowledgeGraph, Node, add_edges_to_graph, build_graph_from_corpus
-from aris.research_planner import PlannerContext, ResearchAction, ResearchPlanner
+from aris.graph.document_ingestion import Document, DocumentCorpus
+from aris.graph.knowledge_graph import Edge, KnowledgeGraph, Node, add_edges_to_graph, build_graph_from_corpus
+from aris.graph.research_planner import PlannerContext, ResearchAction, ResearchPlanner
 
 
 def make_doc(content: str, source: str, doc_id_num: int) -> Document:
@@ -74,7 +74,7 @@ def sample_graph_for_planner() -> KnowledgeGraph:
     return add_edges_to_graph(base, [e1, e2, e3])
 
 
-def test_gap_driven_generates_actions():
+def test_gap_driven_generates_actions() -> None:
     graph = sample_graph_for_planner()
     # Node 3 should be isolated (no edges referencing doc3)
     planner = ResearchPlanner()
@@ -93,7 +93,7 @@ def test_gap_driven_generates_actions():
     assert any("Investigate connections" in a.description for a in actions)
 
 
-def test_contradiction_driven_generates_actions():
+def test_contradiction_driven_generates_actions() -> None:
     graph = sample_graph_for_planner()
     planner = ResearchPlanner()
     ctx = PlannerContext(graph=graph, strategy="contradiction-driven", max_actions=10)
@@ -106,7 +106,7 @@ def test_contradiction_driven_generates_actions():
             assert "supports" in a.evidence or "refutes" in a.evidence
 
 
-def test_weak_evidence_refinement_generates_actions():
+def test_weak_evidence_refinement_generates_actions() -> None:
     graph = sample_graph_for_planner()
     planner = ResearchPlanner()
     ctx = PlannerContext(graph=graph, strategy="weak-evidence refinement", max_actions=10)
@@ -114,7 +114,7 @@ def test_weak_evidence_refinement_generates_actions():
     assert any(a.action_type == "strengthen_evidence" for a in actions)
 
 
-def test_determinism_and_ranking_stability():
+def test_determinism_and_ranking_stability() -> None:
     graph = sample_graph_for_planner()
     planner = ResearchPlanner()
 
@@ -146,13 +146,12 @@ def test_determinism_and_ranking_stability():
     assert priorities == sorted(priorities, reverse=True)
 
 
-def test_planner_context_immutable():
+def test_planner_context_immutable() -> None:
     graph = sample_graph_for_planner()
     ctx = PlannerContext(graph=graph, strategy="gap-driven", max_actions=10)
     # Attempting to mutate should fail due to frozen dataclass
     try:
-        # type: ignore[attr-defined]
-        ctx.strategy = "weak-evidence"
+        ctx.strategy = "weak-evidence"  # type: ignore[misc]
         mutated = True
     except Exception:
         mutated = False

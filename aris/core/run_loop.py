@@ -13,10 +13,10 @@ The loop is deterministic by design:
 
 from collections.abc import Sequence
 
-from aris.input_interface import InputPacket
-from aris.memory_store import MemoryStore, MemoryTrace
-from aris.reasoning_engine import ReasoningEngine, ReasoningResult
-from aris.tool import ToolRegistry
+from aris.core.input_interface import InputPacket
+from aris.core.memory_store import MemoryStore, MemoryTrace
+from aris.core.reasoning_engine import ReasoningEngine, ReasoningResult
+from aris.core.tool import ToolRegistry
 
 
 def _derive_conclusion(result: ReasoningResult) -> str:
