@@ -14,4 +14,12 @@ Phase 2 modules operate exclusively through:
 Phase 2 is OPTIONAL and does not affect Phase 1 core behavior.
 """
 
-__all__ = []
+from aris.ml.role_induction import RoleCandidate, SciBertRoleTool
+from aris.ml.ontology_induction import OntologyClusterCandidate, OntologyClusteringTool
+
+__all__ = [
+	"RoleCandidate",
+	"SciBertRoleTool",
+	"OntologyClusterCandidate",
+	"OntologyClusteringTool",
+]

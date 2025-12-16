@@ -20,7 +20,6 @@ Create a virtual environment and install the project:
 python -m venv venv
 venv\Scripts\activate  # On Windows
 # source venv/bin/activate  # On Unix/macOS
-
 pip install -e .
 
 # For PDF support (Module 7):
@@ -38,7 +37,14 @@ python -m aris
 Expected output:
 ```
 ARIS booted
-```
+ Phase 2 adds machine learning modules (e.g., SciBERT role induction, ontology induction). These modules are separate from Phase 1 core and are not installed by default.
+
+ - Base install (Phase 1 only):
+   - `pip install aris`
+ - Enable ML modules (Phase 2):
+   - `pip install aris[ml]`
+
+ All ML dependencies are optional and imported lazily. If a Phase 2 tool is invoked without the required packages installed, it returns a structured error payload indicating the missing dependencies and how to enable them.
 
 ## Modules
 
