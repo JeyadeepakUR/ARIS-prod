@@ -16,10 +16,13 @@ Phase 2 is OPTIONAL and does not affect Phase 1 core behavior.
 
 from aris.ml.role_induction import RoleCandidate, SciBertRoleTool
 from aris.ml.ontology_induction import OntologyClusterCandidate, OntologyClusteringTool
+from aris.ml.relation_induction import RelationCandidate, SemanticRelationTool
 
 __all__ = [
-	"RoleCandidate",
-	"SciBertRoleTool",
-	"OntologyClusterCandidate",
-	"OntologyClusteringTool",
+    "RoleCandidate",
+    "SciBertRoleTool",
+    "OntologyClusterCandidate",
+    "OntologyClusteringTool",
+    "RelationCandidate",
+    "SemanticRelationTool",
 ]

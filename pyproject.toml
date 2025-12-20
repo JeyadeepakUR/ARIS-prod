@@ -24,6 +24,7 @@ ml = [
     "numpy>=1.24",
     "scikit-learn>=1.3",
     "hdbscan>=0.8.36",
+    "spacy>=3.7.0",
 ]
 
 [tool.setuptools.packages.find]

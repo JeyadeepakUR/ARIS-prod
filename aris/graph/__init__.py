@@ -5,6 +5,7 @@ and policy-bounded research planning without ML dependencies:
 - Document ingestion and corpus canonicalization
 - Knowledge graph construction with evidence-backed edges
 - Deterministic research planning (gap-driven, contradiction-driven, weak-evidence)
+- Hypothesis induction from graph patterns (Module 13)
 
 All operations are reproducible, falsifiable, and non-mutating.
 """
@@ -15,6 +16,10 @@ from aris.graph.document_ingestion import (
     DocumentIngestor,
     PDFLoader,
     PlainTextLoader,
+)
+from aris.graph.hypothesis_induction import (
+    HypothesisCandidate,
+    HypothesisInductionEngine,
 )
 from aris.graph.knowledge_graph import (
     Edge,
@@ -43,6 +48,8 @@ __all__ = [
     "LinkMaterializer",
     "build_graph_from_corpus",
     "add_edges_to_graph",
+    "HypothesisCandidate",
+    "HypothesisInductionEngine",
     "ResearchAction",
     "PlannerContext",
     "ResearchPlanner",
