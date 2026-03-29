@@ -2,8 +2,9 @@
 
 This package extends ARIS with machine learning capabilities:
 - SciBERT role induction (Module 10)
+- Cross-document entity extraction (Module 10B)
 - Domain ontology clustering (Module 11)
-- Embedding-based hypothesis generation (Module 12)
+- Context-aware relation induction (Module 12)
 - Semantic role labeling (Module 13)
 
 Phase 2 modules operate exclusively through:
@@ -15,12 +16,15 @@ Phase 2 is OPTIONAL and does not affect Phase 1 core behavior.
 """
 
 from aris.ml.role_induction import RoleCandidate, SciBertRoleTool
+from aris.ml.entity_extraction import EntityCandidate, ScientificEntityTool
 from aris.ml.ontology_induction import OntologyClusterCandidate, OntologyClusteringTool
 from aris.ml.relation_induction import RelationCandidate, SemanticRelationTool
 
 __all__ = [
     "RoleCandidate",
     "SciBertRoleTool",
+    "EntityCandidate",
+    "ScientificEntityTool",
     "OntologyClusterCandidate",
     "OntologyClusteringTool",
     "RelationCandidate",

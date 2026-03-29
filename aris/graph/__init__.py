@@ -6,6 +6,7 @@ and policy-bounded research planning without ML dependencies:
 - Knowledge graph construction with evidence-backed edges
 - Deterministic research planning (gap-driven, contradiction-driven, weak-evidence)
 - Hypothesis induction from graph patterns (Module 13)
+- Hypothesis impact scoring using entity/relation signals (Module 13 enhancement)
 
 All operations are reproducible, falsifiable, and non-mutating.
 """
@@ -20,6 +21,10 @@ from aris.graph.document_ingestion import (
 from aris.graph.hypothesis_induction import (
     HypothesisCandidate,
     HypothesisInductionEngine,
+)
+from aris.graph.hypothesis_impact import (
+    HypothesisImpactScore,
+    HypothesisImpactScoringTool,
 )
 from aris.graph.knowledge_graph import (
     Edge,
@@ -50,6 +55,8 @@ __all__ = [
     "add_edges_to_graph",
     "HypothesisCandidate",
     "HypothesisInductionEngine",
+    "HypothesisImpactScore",
+    "HypothesisImpactScoringTool",
     "ResearchAction",
     "PlannerContext",
     "ResearchPlanner",

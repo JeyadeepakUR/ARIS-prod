@@ -10,8 +10,9 @@ Semantic relation extraction strictly as hypothesis generation.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterable
 
 from aris.core.tool import Tool
 
@@ -56,7 +57,7 @@ class RelationCandidate:
 
 
 class SemanticRelationTool(Tool):
-    """Extract semantic relations using spaCy SRL with a closed relation ontology.
+    """Context-aware semantic relation extraction with discourse patterns (Module 12).
 
     Input schema (JSON string):
         {
@@ -79,6 +80,10 @@ class SemanticRelationTool(Tool):
         "PRODUCES",
         "DEPENDS_ON",
         "CONTRADICTS",
+        "ACHIEVES",
+        "OUTPERFORMS",
+        "IMPROVES",
+        "SUPPORTS",
     )
 
     def __init__(self) -> None:
@@ -136,15 +141,14 @@ class SemanticRelationTool(Tool):
         return data
 
     def _extract_relations(self, data: dict[str, Any]) -> list[RelationCandidate]:
-        self._ensure_model()
         text = data["text"]
         entities = data.get("entities", [])
 
         if not text.strip() or not entities:
             return []
 
-        # Process with spaCy
-        doc = self._nlp(text)  # type: ignore[misc]
+        doc = self._maybe_parse(text)
+        sentences = list(self._iter_sentences(text, doc))
 
         # Build entity index by position (with overlap tolerance)
         entity_map: dict[tuple[int, int], dict[str, Any]] = {}
@@ -154,53 +158,61 @@ class SemanticRelationTool(Tool):
             if start >= 0 and end > start:
                 entity_map[(start, end)] = ent
 
+        candidates: list[RelationCandidate] = []
+
+        # Pattern + discourse extraction (novel component)
+        candidates.extend(self._extract_pattern_relations(sentences, entity_map))
+
+        # Dependency-based fallback when spaCy is available
+        if doc is not None:
+            candidates.extend(self._extract_dependency_relations(doc, entity_map))
+
+        return self._deduplicate(candidates)
+
+    def _extract_dependency_relations(self, doc: Any, entity_map: dict[tuple[int, int], dict[str, Any]]) -> list[RelationCandidate]:
         def find_overlapping_entity(start: int, end: int) -> dict[str, Any] | None:
-            """Find entity that overlaps with given span."""
             for (e_start, e_end), entity in entity_map.items():
-                # Check if ranges overlap
                 if not (end <= e_start or start >= e_end):
                     return entity
             return None
 
         candidates: list[RelationCandidate] = []
 
-        # Extract predicate-argument structures from dependency parse
         for token in doc:
-            if token.pos_ == "VERB":
-                predicate = token.lemma_
-                subjects = [child for child in token.children if child.dep_ in ("nsubj", "nsubjpass")]
-                objects = [child for child in token.children if child.dep_ in ("dobj", "pobj", "attr")]
+            if getattr(token, "pos_", "") == "VERB":
+                predicate = getattr(token, "lemma_", getattr(token, "text", "")) or ""
+                subjects = [child for child in token.children if getattr(child, "dep_", "") in ("nsubj", "nsubjpass")]
+                objects = [child for child in token.children if getattr(child, "dep_", "") in ("dobj", "pobj", "attr")]
 
                 for subj in subjects:
                     for obj in objects:
                         subj_start, subj_end = subj.idx, subj.idx + len(subj.text)
                         obj_start, obj_end = obj.idx, obj.idx + len(obj.text)
 
-                        # Try to find overlapping entities
                         subj_entity = find_overlapping_entity(subj_start, subj_end)
                         obj_entity = find_overlapping_entity(obj_start, obj_end)
 
                         if subj_entity and obj_entity:
                             relation_type = self._map_predicate_to_relation(predicate)
-                            confidence = self._compute_confidence(token)
+                            confidence = self._compute_dependency_confidence(token)
 
                             provenance = {
                                 "model": self.MODEL_NAME,
                                 "relation_ontology": list(self.RELATION_ONTOLOGY),
                                 "strategy": "spacy_dependency_parse",
-                                "predicate_pos": token.pos_,
-                                "dependency_pattern": f"{subj.dep_}-{token.dep_}-{obj.dep_}",
+                                "predicate_pos": getattr(token, "pos_", ""),
+                                "dependency_pattern": f"{getattr(subj, 'dep_', '')}-{getattr(token, 'dep_', '')}-{getattr(obj, 'dep_', '')}",
                             }
 
                             candidates.append(
                                 RelationCandidate(
                                     relation_type=relation_type,
-                                    subject_span=subj_entity["text"],
-                                    subject_start=subj_entity["start"],
-                                    subject_end=subj_entity["end"],
-                                    object_span=obj_entity["text"],
-                                    object_start=obj_entity["start"],
-                                    object_end=obj_entity["end"],
+                                    subject_span=self._entity_span(subj_entity),
+                                    subject_start=subj_entity.get("start", -1),
+                                    subject_end=subj_entity.get("end", -1),
+                                    object_span=self._entity_span(obj_entity),
+                                    object_start=obj_entity.get("start", -1),
+                                    object_end=obj_entity.get("end", -1),
                                     predicate=predicate,
                                     confidence=confidence,
                                     provenance=provenance,
@@ -209,37 +221,238 @@ class SemanticRelationTool(Tool):
 
         return candidates
 
+    def _extract_pattern_relations(
+        self,
+        sentences: list[dict[str, Any]],
+        entity_map: dict[tuple[int, int], dict[str, Any]],
+    ) -> list[RelationCandidate]:
+        candidates: list[RelationCandidate] = []
+
+        method_types = {"METHOD", "MODEL", "ALGORITHM", "APPROACH"}
+        metric_types = {"METRIC", "SCORE", "ACCURACY", "BLEU"}
+        dataset_types = {"DATASET", "CORPUS", "BENCHMARK"}
+
+        for sentence_id, sent in enumerate(sentences):
+            sent_text = sent["text"]
+            sent_start = sent["start"]
+            sent_end = sent["end"]
+            sent_lower = sent_text.lower()
+
+            discourse_cues = [cue for cue in ("result", "experiment", "we show", "significant", "compared") if cue in sent_lower]
+
+            entities_in_sentence: list[dict[str, Any]] = []
+            for (s, e), ent in entity_map.items():
+                if s >= sent_start and e <= sent_end:
+                    entities_in_sentence.append(ent)
+
+            if len(entities_in_sentence) < 2:
+                continue
+
+            method_entities = [ent for ent in entities_in_sentence if ent.get("type", "").upper() in method_types]
+            metric_entities = [ent for ent in entities_in_sentence if ent.get("type", "").upper() in metric_types]
+            dataset_entities = [ent for ent in entities_in_sentence if ent.get("type", "").upper() in dataset_types]
+
+            # ACHIEVES: method + metric with achievement verbs
+            if method_entities and metric_entities and re.search(r"achiev|reach|score|obtain", sent_lower):
+                for method_ent in method_entities:
+                    for metric_ent in metric_entities:
+                        candidates.append(
+                            self._build_candidate(
+                                relation_type="ACHIEVES",
+                                subject_ent=method_ent,
+                                object_ent=metric_ent,
+                                predicate="achieve",
+                                cues=discourse_cues,
+                                strong_pattern=True,
+                                type_alignment=True,
+                                sentence_id=sentence_id,
+                                pattern="pattern_achieves",
+                            )
+                        )
+
+            # OUTPERFORMS: method vs method comparative
+            if len(method_entities) >= 2 and re.search(r"outperform|better than|beat|surpass|exceed", sent_lower):
+                primary = method_entities[0]
+                baseline = method_entities[1]
+                candidates.append(
+                    self._build_candidate(
+                        relation_type="OUTPERFORMS",
+                        subject_ent=primary,
+                        object_ent=baseline,
+                        predicate="outperform",
+                        cues=discourse_cues,
+                        strong_pattern=True,
+                        type_alignment=True,
+                        sentence_id=sentence_id,
+                        pattern="pattern_outperforms",
+                    )
+                )
+
+            # IMPROVES: method + metric improvement language
+            if method_entities and metric_entities and re.search(r"improv|increase|reduce error", sent_lower):
+                for method_ent in method_entities:
+                    for metric_ent in metric_entities:
+                        candidates.append(
+                            self._build_candidate(
+                                relation_type="IMPROVES",
+                                subject_ent=method_ent,
+                                object_ent=metric_ent,
+                                predicate="improve",
+                                cues=discourse_cues,
+                                strong_pattern=False,
+                                type_alignment=True,
+                                sentence_id=sentence_id,
+                                pattern="pattern_improves",
+                            )
+                        )
+
+            # USES: method uses dataset/material
+            if method_entities and dataset_entities and re.search(r"use|based on|built on|leverag", sent_lower):
+                for method_ent in method_entities:
+                    for data_ent in dataset_entities:
+                        candidates.append(
+                            self._build_candidate(
+                                relation_type="USES",
+                                subject_ent=method_ent,
+                                object_ent=data_ent,
+                                predicate="use",
+                                cues=discourse_cues,
+                                strong_pattern=False,
+                                type_alignment=True,
+                                sentence_id=sentence_id,
+                                pattern="pattern_uses",
+                            )
+                        )
+
+        return candidates
+
+    def _build_candidate(
+        self,
+        *,
+        relation_type: str,
+        subject_ent: dict[str, Any],
+        object_ent: dict[str, Any],
+        predicate: str,
+        cues: list[str],
+        strong_pattern: bool,
+        type_alignment: bool,
+        sentence_id: int,
+        pattern: str,
+    ) -> RelationCandidate:
+        confidence = self._pattern_confidence(cues, strong_pattern, type_alignment)
+        provenance = {
+            "strategy": "pattern_discourse",
+            "relation_ontology": list(self.RELATION_ONTOLOGY),
+            "pattern": pattern,
+            "discourse_cues": cues,
+            "sentence_id": sentence_id,
+        }
+        return RelationCandidate(
+            relation_type=relation_type,
+            subject_span=self._entity_span(subject_ent),
+            subject_start=subject_ent.get("start", -1),
+            subject_end=subject_ent.get("end", -1),
+            object_span=self._entity_span(object_ent),
+            object_start=object_ent.get("start", -1),
+            object_end=object_ent.get("end", -1),
+            predicate=predicate,
+            confidence=confidence,
+            provenance=provenance,
+        )
+
+    def _pattern_confidence(self, cues: list[str], strong_pattern: bool, type_alignment: bool) -> float:
+        base = 0.65
+        if strong_pattern:
+            base += 0.15
+        if type_alignment:
+            base += 0.1
+        base += min(0.15, 0.05 * len(cues))
+        return min(1.0, base)
+
+    def _compute_dependency_confidence(self, token: Any) -> float:
+        base_confidence = 0.7
+        if hasattr(token, "head") and getattr(token.head, "pos_", "") == "ROOT":
+            base_confidence += 0.15
+        if len(list(getattr(token, "children", []))) > 2:
+            base_confidence += 0.1
+        return min(1.0, base_confidence)
+
     def _map_predicate_to_relation(self, predicate: str) -> str:
-        """Map verb lemma to closed relation ontology."""
-        # Simple deterministic mapping
         cause_verbs = {"cause", "trigger", "induce", "lead", "produce", "generate"}
         part_verbs = {"contain", "include", "comprise", "consist"}
         use_verbs = {"use", "utilize", "employ", "apply"}
         depend_verbs = {"require", "need", "depend", "rely"}
         contradict_verbs = {"contradict", "oppose", "conflict", "disagree"}
+        achieve_verbs = {"achieve", "reach", "score", "obtain"}
+        outperform_verbs = {"outperform", "surpass", "exceed", "beat"}
+        improve_verbs = {"improve", "increase", "reduce"}
+        support_verbs = {"support", "validate", "confirm"}
 
         if predicate in cause_verbs:
             return "CAUSES"
-        elif predicate in part_verbs:
+        if predicate in part_verbs:
             return "PART_OF"
-        elif predicate in use_verbs:
+        if predicate in use_verbs:
             return "USES"
-        elif predicate in depend_verbs:
+        if predicate in depend_verbs:
             return "DEPENDS_ON"
-        elif predicate in contradict_verbs:
+        if predicate in contradict_verbs:
             return "CONTRADICTS"
-        else:
-            return "RELATED_TO"
+        if predicate in achieve_verbs:
+            return "ACHIEVES"
+        if predicate in outperform_verbs:
+            return "OUTPERFORMS"
+        if predicate in improve_verbs:
+            return "IMPROVES"
+        if predicate in support_verbs:
+            return "SUPPORTS"
+        return "RELATED_TO"
 
-    def _compute_confidence(self, token: Any) -> float:
-        """Compute confidence based on syntactic features."""
-        # Deterministic confidence based on dependency depth and verb properties
-        base_confidence = 0.7
-        if hasattr(token, "head") and token.head.pos_ == "ROOT":
-            base_confidence += 0.15
-        if len(list(token.children)) > 2:
-            base_confidence += 0.1
-        return min(1.0, base_confidence)
+    def _maybe_parse(self, text: str) -> Any | None:
+        try:
+            self._ensure_model()
+        except _MissingOptionalDependency:
+            raise
+        except Exception:
+            return None
+
+        if self._nlp is None:
+            return None
+        return self._nlp(text)  # type: ignore[misc]
+
+    def _iter_sentences(self, text: str, doc: Any | None) -> Iterable[dict[str, Any]]:
+        if doc is not None and hasattr(doc, "sents"):
+            for sent in doc.sents:
+                start = getattr(sent, "start_char", 0)
+                end = getattr(sent, "end_char", start + len(getattr(sent, "text", "")))
+                yield {"text": getattr(sent, "text", ""), "start": start, "end": end}
+            return
+
+        segments = re.split(r"(?<=[.!?])\s+", text)
+        offset = 0
+        for segment in segments:
+            seg = segment.strip()
+            if not seg:
+                offset += len(segment) + 1
+                continue
+            start = text.find(seg, offset)
+            end = start + len(seg)
+            yield {"text": seg, "start": start, "end": end}
+            offset = end
+
+    def _deduplicate(self, candidates: list[RelationCandidate]) -> list[RelationCandidate]:
+        seen: set[tuple[str, int, int, str]] = set()
+        deduped: list[RelationCandidate] = []
+        for cand in candidates:
+            key = (cand.relation_type, cand.subject_start, cand.object_start, cand.predicate)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(cand)
+        return deduped
+
+    def _entity_span(self, entity: dict[str, Any]) -> str:
+        return entity.get("span") or entity.get("text") or ""
 
     def _ensure_model(self) -> None:
         if self._nlp is not None:
@@ -253,9 +466,5 @@ class SemanticRelationTool(Tool):
 
         try:
             self._nlp = spacy.load(self.MODEL_NAME)  # type: ignore[attr-defined]
-        except Exception as exc:  # pragma: no cover
-            # Model not downloaded
-            raise RuntimeError(
-                f"spaCy model '{self.MODEL_NAME}' not found. "
-                f"Install with: python -m spacy download {self.MODEL_NAME}"
-            ) from exc
+        except Exception:
+            self._nlp = None
