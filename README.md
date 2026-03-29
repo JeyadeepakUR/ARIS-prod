@@ -6,7 +6,7 @@ A clean, production-ready Python system with deterministic logging, strict type 
 
 **Phase 1 (SEALED)**: Deterministic research intelligence substrate (Modules 0–9). No ML dependencies. Reproducible. Falsifiable. See [PHASE_1_CONTRACT.md](PHASE_1_CONTRACT.md).
 
-**Phase 2 (PENDING)**: ML-augmented extensions (Modules 10–13: SciBERT roles, clustering, embedding hypothesis, SRL). Awaiting user signal. Isolated in `aris.ml`.
+**Phase 2 (COMPLETE)**: ML-augmented extensions (Modules 10–13). SciBERT role induction, HDBSCAN concept clustering, spaCy relation extraction, and deterministic hypothesis induction. Fully integrated. Isolated in `aris.ml`.
 
 ## Requirements
 
@@ -20,11 +20,24 @@ Create a virtual environment and install the project:
 python -m venv venv
 venv\Scripts\activate  # On Windows
 # source venv/bin/activate  # On Unix/macOS
+
+# Base install (Phase 1 only, minimal dependencies):
 pip install -e .
 
-# For PDF support (Module 7):
+# With Phase 2 ML modules (SciBERT, HDBSCAN, spaCy):
+pip install -e ".[ml]"
+
+# With PDF support (Module 7):
 pip install -e ".[pdf]"
+
+# Development (type checking, linting, testing):
+pip install -e ".[dev]"
+
+# All extras:
+pip install -e ".[ml,pdf,dev]"
 ```
+
+All ML dependencies are **optional** and imported lazily. If invoked without required packages, Phase 2 tools return a structured error payload indicating missing dependencies and how to enable them.
 
 ## Usage
 
@@ -34,17 +47,28 @@ Run the system:
 python -m aris
 ```
 
-Expected output:
+### Phase 2 Demo
+
+Extract and analyze research papers with ML modules:
+
+```bash
+python demo_phase2.py paper.pdf --format pdf
 ```
-ARIS booted
- Phase 2 adds machine learning modules (e.g., SciBERT role induction, ontology induction). These modules are separate from Phase 1 core and are not installed by default.
 
- - Base install (Phase 1 only):
-   - `pip install aris`
- - Enable ML modules (Phase 2):
-   - `pip install aris[ml]`
+This demo:
+1. Ingests a PDF document (Module 7)
+2. Extracts researcher roles via SciBERT (Module 10)
+3. Clusters concepts using HDBSCAN (Module 11)
+4. Extracts relations using spaCy SRL (Module 12)
+5. Induces hypotheses from graph patterns (Module 13)
 
- All ML dependencies are optional and imported lazily. If a Phase 2 tool is invoked without the required packages installed, it returns a structured error payload indicating the missing dependencies and how to enable them.
+Example output:
+```
+MODULE 10: 293 conceptual role candidates extracted
+MODULE 11: 40 clusters detected (21 cluster, 10 chain patterns)
+MODULE 13: 31 hypotheses induced (21 cluster-type, 10 chain-type)
+MODULE 12: 4 relations extracted (subject-predicate-object triples)
+```
 
 ## Modules
 
@@ -122,6 +146,42 @@ ARIS booted
 - Deterministic ranking by priority desc → action_type → description → action_id
 - Guarantees: no execution, no mutation, no autonomy loops, no learning/optimization
 
+### Module 10: Researcher Role Induction (SciBERT)
+- **RoleCandidate**: Immutable candidate holding extracted span, role label (author/researcher/institution/etc.), position, confidence
+- **RoleInductionEngine**: Uses pretrained SciBERT model to classify researcher roles in text
+- Lazily imports torch/transformers; returns structured errors if ML extras not installed
+- Conceptual filtering: excludes generic/background roles, retains domain-specific roles
+- Deterministic with frozen random seeds
+
+### Module 11: Concept Clustering (HDBSCAN)
+- **ConceptCandidate**: Immutable cluster member with text, embedding, cluster_id, score
+- **OntologyClusteringEngine**: Clusters concepts via HDBSCAN on semantic embeddings
+- Generates deterministic UUIDs for clusters (uuid5 from member set)
+- Extracts key terms from role spans (regex + spaCy fallback) to focus on concepts, not names
+- Returns cluster hierarchy with silhouette scores
+- Lazily imports scikit-learn/hdbscan; returns structured errors if ML extras not installed
+
+### Module 12: Relation Extraction (spaCy SRL)
+- **RelationCandidate**: Immutable relation holding subject, predicate, object, span positions, confidence
+- **RelationInductionEngine**: Uses spaCy semantic role labeling to extract subject-predicate-object triples
+- Overlap-based entity matching: robust to position variations in extracted spans
+- Produces deterministic output with reproducible confidence scoring
+- Lazily imports spacy; returns structured errors if ML extras not installed
+
+### Module 13: Hypothesis Induction
+- **HypothesisCandidate**: Immutable hypothesis with motif_type, concept_ids, confidence, rationale, evidence
+- **HypothesisInductionEngine**: Induces **descriptive** hypotheses from graph patterns (not predictive)
+- Five closed-set motif types:
+  - **cluster**: Triangle (3+ concepts strongly connected)
+  - **chain**: Linear path (A→B→C without C→A)
+  - **gap**: Missing edge (A↔B, B↔C, but no A↔C)
+  - **hub**: Hub-and-spoke (central node with radial edges)
+  - **contradiction**: Conflicting edge types (A-supports-B and A-opposes-B)
+- Minimum confidence threshold to filter low-signal hypotheses
+- Deterministic UUIDs (uuid5) for reproducible output
+- No ML, no mutation, pure graph pattern detection
+- Guarantees: deterministic behavior, reproducible results, clear evidence for each hypothesis
+
 ### Module 0: Core Infrastructure
 - **MemoryStore**: Thread-safe abstraction with two implementations:
 	- In-memory store for tests
@@ -131,21 +191,29 @@ ARIS booted
 
 ## Try It
 
-- Examples:
+- **Phase 1 examples**:
 	- Memory store demo: `python example_memory_store.py`
 	- Thread-safety demo: `python example_thread_safety.py`
+	- Reasoning engine demo: `python example_reasoning_engine.py`
 
-- Run loop tests:
+- **Phase 2 end-to-end demo**:
 	```bash
-	python -m pytest tests/test_run_loop.py -q
+	python demo_phase2.py paper.pdf --format pdf
 	```
+	Requires `[ml]` and `[pdf]` extras installed.
 
-- Type checking (strict):
+- **Run all tests**:
+	```bash
+	python -m pytest tests/ -q
+	```
+	All 270+ tests passing (Phase 1 + Phase 2).
+
+- **Type checking (strict mode)**:
 	```bash
 	python -m mypy aris --strict
 	```
 
-- Lint (ruff):
+- **Lint (ruff)**:
 	```bash
 	python -m ruff check .
 	```
@@ -187,17 +255,18 @@ aris/
 │   │   ├── comparative_runner.py  # Module 6: Comparative runner
 │   │   ├── memory_store.py        # Module 0: Trace persistence
 │   │   └── run_loop.py            # Module 0: Orchestration
-│   ├── graph/                     # Phase 1: Modules 7-9
+│   ├── graph/                     # Phase 1: Modules 7-9 + Phase 2: Module 13
 │   │   ├── __init__.py
 │   │   ├── document_ingestion.py  # Module 7: Document ingestion
 │   │   ├── knowledge_graph.py     # Module 8: Knowledge graph & linking
-│   │   └── research_planner.py    # Module 9: Research planning
-│   └── ml/                        # Phase 2: Modules 10-13 (pending)
+│   │   ├── research_planner.py    # Module 9: Research planning
+│   │   └── hypothesis_induction.py # Module 13: Hypothesis induction
+│   └── ml/                        # Phase 2: Modules 10-12 (optional)
 │       ├── __init__.py
-│       ├── sciebert_roles.py      # Module 10 (placeholder)
-│       ├── ontology_clustering.py # Module 11 (placeholder)
-│       ├── embedding_hypothesis.py # Module 12 (placeholder)
-│       └── semantic_roles.py      # Module 13 (placeholder)
+│       ├── role_induction.py      # Module 10: SciBERT role extraction
+│       ├── ontology_clustering.py # Module 11: HDBSCAN concept clustering
+│       └── relation_induction.py  # Module 12: spaCy SRL relation extraction
+├── demo_phase2.py                 # End-to-end demo: PDF → roles → clusters → hypotheses
 └── tests/
     ├── core/                      # Phase 1: Modules 0, 1-6 tests
     │   ├── test_input_interface.py
@@ -208,20 +277,22 @@ aris/
     │   ├── test_comparative_runner.py
     │   ├── test_memory_store.py
     │   └── test_run_loop.py
-    ├── graph/                     # Phase 1: Modules 7-9 tests
+    ├── graph/                     # Phase 1: Modules 7-9 + Phase 2: Module 13
     │   ├── test_document_ingestion.py
     │   ├── test_knowledge_graph.py
     │   ├── test_knowledge_graph_simple.py
-    │   └── test_research_planner.py
-    └── ml/                        # Phase 2: Modules 10-13 tests (pending)
-        ├── test_sciebert_roles.py
+    │   ├── test_research_planner.py
+    │   └── test_hypothesis_induction.py (19 tests, all passing)
+    └── ml/                        # Phase 2: Modules 10-12 tests
+        ├── test_role_induction.py
         ├── test_ontology_clustering.py
-        ├── test_embedding_hypothesis.py
-        └── test_semantic_roles.py
+        └── test_relation_induction.py
 ```
 
-**Governance**: Phase 1 is sealed. Phase 2 is isolated in `aris.ml`. See [PHASE_1_CONTRACT.md](PHASE_1_CONTRACT.md).
+**Governance**: Phase 1 is sealed. Phase 2 (Modules 10-13) is complete and fully integrated. See [PHASE_1_CONTRACT.md](PHASE_1_CONTRACT.md).
 - **Strict type hints**: Full mypy strict mode compliance
 - **Deterministic logging**: Consistent, reproducible log output
 - **Clear module boundaries**: Well-defined separation of concerns
 - **Production-ready**: Clean architecture from day one
+- **Reproducible outputs**: All ML components use frozen random seeds (uuid5 for determinism)
+- **Optional ML dependencies**: Phase 2 extras ([ml], [pdf]) are lazy-imported; graceful errors if missing

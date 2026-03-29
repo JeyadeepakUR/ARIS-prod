@@ -186,3 +186,49 @@ def test_missing_spacy_dependency() -> None:
     assert output["module"] == "relation_induction"
     assert "spacy" in output["required"]
     assert "aris[ml]" in output["install_hint"]
+
+
+def test_pattern_outperforms_extraction() -> None:
+    tool = SemanticRelationTool()
+    tool._ensure_model = lambda: None  # type: ignore[assignment]
+    tool._nlp = None
+
+    data = {
+        "text": "Our model outperforms the baseline on GLUE.",
+        "entities": [
+            {"span": "Our model", "start": 0, "end": 9, "type": "METHOD"},
+            {"span": "baseline", "start": 26, "end": 34, "type": "METHOD"},
+            {"span": "GLUE", "start": 38, "end": 42, "type": "DATASET"},
+        ],
+    }
+
+    output = json.loads(tool.execute(json.dumps(data)))
+    assert output, "Expected at least one relation from comparative pattern"
+    rel = output[0]
+    assert rel["relation_type"] == "OUTPERFORMS"
+    assert rel["subject_span"] == "Our model"
+    assert rel["object_span"] == "baseline"
+    assert 0.6 <= rel["confidence"] <= 1.0
+
+
+def test_pattern_achieves_metric_extraction() -> None:
+    tool = SemanticRelationTool()
+    tool._ensure_model = lambda: None  # type: ignore[assignment]
+    tool._nlp = None
+
+    data = {
+        "text": "BERT achieves 92.8% accuracy on GLUE.",
+        "entities": [
+            {"span": "BERT", "start": 0, "end": 4, "type": "METHOD"},
+            {"span": "92.8%", "start": 14, "end": 19, "type": "METRIC"},
+            {"span": "GLUE", "start": 32, "end": 36, "type": "DATASET"},
+        ],
+    }
+
+    output = json.loads(tool.execute(json.dumps(data)))
+    achieves = [r for r in output if r["relation_type"] == "ACHIEVES"]
+    assert achieves, "Expected ACHIEVES relation for metric report"
+    top = achieves[0]
+    assert top["subject_span"] == "BERT"
+    assert top["object_span"] == "92.8%"
+    assert 0.6 <= top["confidence"] <= 1.0
