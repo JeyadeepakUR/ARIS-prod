@@ -20,6 +20,10 @@
 10. [Usage Patterns](#usage-patterns)
 11. [Testing Structure](#testing-structure)
 12. [Data and Benchmarking](#data-and-benchmarking)
+13. [Golden Patch 2026 Update](#golden-patch-2026-update)
+14. [Production API Architecture](#production-api-architecture)
+15. [Deep and Wide Research Workflow](#deep-and-wide-research-workflow)
+16. [Patent and Journal Positioning](#patent-and-journal-positioning)
 
 ---
 
@@ -42,6 +46,224 @@
 2. **Phase 2**: ML-augmented extensions for entity/relation extraction and clustering
 3. **Reproducibility**: Publication-quality benchmarking on peer-reviewed datasets (SciERC, DocRED)
 4. **Falsifiability**: All claims traceable to explicit logic with no hidden heuristics
+
+---
+
+## Golden Patch 2026 Update
+
+This section records the significant production-grade increment applied on March 29, 2026.
+
+### Strategic Shift
+
+ARIS now operates as an **innovation intelligence engine** that supports:
+- Deep-intensive research exploration (contradiction-focused, domain-specific validation)
+- Wide-extensive research exploration (cross-domain bridge concept discovery)
+- Actionable hypothesis portfolio generation (prioritized by novelty, leverage, and feasibility)
+- API-first productization for immediate integration into external systems
+
+### Newly Implemented Components
+
+#### 1) Deterministic Semantic Analysis (`aris/core/semantic_analyzer.py`)
+
+Provides native, non-LLM semantic extraction:
+- `KeywordSignal`: weighted keyword evidence
+- `ClaimUnit`: normalized polarity-aware claims (positive/negative/neutral)
+- `SemanticProfile`: document-level semantic signature (keywords, claims, concepts)
+- `SemanticAnalyzer`: deterministic extraction pipeline
+
+#### 2) Cross-Paper Contradiction Mining (`aris/graph/contradiction_engine.py`)
+
+Adds explicit contradiction detection across documents:
+- `ContradictionRecord`: evidence-backed contradiction object
+- `ContradictionEngine`: pairwise claim polarity conflict detection with overlap-aware severity
+
+#### 3) Cross-Domain Bridge Discovery (`aris/graph/bridge_discovery.py`)
+
+Introduces systematic transfer-opportunity detection:
+- `BridgeCandidate`: source domain, target domain, bridge concept, novelty, rationale
+- `BridgeDiscoveryEngine`: asymmetric prominence analysis over shared keyword space
+
+#### 4) Hypothesis Portfolio Engine (`aris/graph/hypothesis_portfolio.py`)
+
+Builds ranked hypotheses in two coordinated modes:
+- `ResearchHypothesis`: normalized prioritized hypothesis unit
+- `HypothesisPortfolioEngine`:
+  - Deep mode: contradiction resolution and intra-domain refinement
+  - Wide mode: cross-domain transfer hypotheses
+  - Priority = weighted function of novelty, contradiction leverage, and feasibility
+
+#### 5) API Product Layer (`aris/api/`)
+
+Adds ready-to-use API interface:
+- `aris/api/app.py`: FastAPI application factory (`create_app`) + deployed app instance
+- `aris/api/schemas.py`: request/response contracts via Pydantic
+- Endpoints:
+  - `GET /v1/health`
+  - `POST /v1/analyze`
+
+#### 6) Packaging Changes (`pyproject.toml`)
+
+Added API optional dependency group:
+- `api`: fastapi, uvicorn, pydantic, httpx
+
+#### 7) Test Expansion
+
+New deterministic and API coverage tests:
+- `tests/core/test_semantic_analyzer.py`
+- `tests/graph/test_contradiction_engine.py`
+- `tests/graph/test_bridge_discovery.py`
+- `tests/graph/test_hypothesis_portfolio.py`
+- `tests/test_api_optional.py`
+
+Verification result after implementation:
+- **308 tests passed**
+
+---
+
+## Production API Architecture
+
+### Current Repository State (Post-Cleanup + Golden Patch)
+
+```
+z:/aris/
+├── aris/
+│   ├── core/
+│   │   ├── input_interface.py
+│   │   ├── reasoning_engine.py
+│   │   ├── evaluation.py
+│   │   ├── memory_store.py
+│   │   ├── run_loop.py
+│   │   ├── trace_replay.py
+│   │   ├── comparative_runner.py
+│   │   ├── logging_config.py
+│   │   └── semantic_analyzer.py               # NEW
+│   ├── graph/
+│   │   ├── document_ingestion.py
+│   │   ├── knowledge_graph.py
+│   │   ├── research_planner.py
+│   │   ├── hypothesis_induction.py
+│   │   ├── hypothesis_impact.py
+│   │   ├── contradiction_engine.py            # NEW
+│   │   ├── bridge_discovery.py                # NEW
+│   │   └── hypothesis_portfolio.py            # NEW
+│   ├── ml/
+│   │   ├── role_induction.py
+│   │   ├── entity_extraction.py
+│   │   ├── ontology_induction.py
+│   │   └── relation_induction.py
+│   └── api/
+│       ├── __init__.py                        # NEW
+│       ├── app.py                             # NEW
+│       └── schemas.py                         # NEW
+├── tests/
+│   ├── core/
+│   ├── graph/
+│   ├── ml/
+│   ├── test_cli.py
+│   └── test_api_optional.py                   # NEW
+├── pyproject.toml
+├── README.md
+├── PHASE_1_CONTRACT.md
+└── PROJECT_ANALYSIS.md
+```
+
+### API Workflow (`POST /v1/analyze`)
+
+1. Receive list of documents (document_id, domain, text)
+2. Build semantic profiles via deterministic `SemanticAnalyzer`
+3. Mine contradiction records via `ContradictionEngine`
+4. Discover cross-domain bridge candidates via `BridgeDiscoveryEngine`
+5. Generate ranked deep/wide hypotheses via `HypothesisPortfolioEngine`
+6. Return structured JSON payload with counts + detailed evidence objects
+
+### Contract and Determinism Notes
+
+- API response is fully structured for downstream orchestration.
+- Deterministic components preserve reproducibility for repeated runs with same input.
+- LLM modules remain optional and can be layered as enhancement adapters.
+
+---
+
+## Deep and Wide Research Workflow
+
+### Deep-Intensive Mode
+
+Objective: maximize internal rigor within a domain.
+
+Pipeline:
+1. Extract claims and polarity from papers in same domain
+2. Detect conflicts and contradictions
+3. Rank contradiction severity by overlap + confidence
+4. Produce contradiction-resolution hypotheses
+5. Attach feasibility-prioritized next experiments
+
+Output type:
+- High-precision, conflict-focused hypotheses
+- Strong evidence chains for targeted replication/ablation studies
+
+### Wide-Extensive Mode
+
+Objective: maximize transfer discovery across domains.
+
+Pipeline:
+1. Aggregate keyword and concept prominence by domain
+2. Find shared concepts with asymmetric prominence
+3. Convert to bridge candidates (source → target transfer opportunities)
+4. Produce cross-domain transfer hypotheses
+5. Prioritize by novelty and practical testability
+
+Output type:
+- Bridge concepts
+- Transfer hypotheses between previously disconnected areas
+
+### Fusion Mode (Portfolio)
+
+`HypothesisPortfolioEngine` combines deep and wide streams into one ranked list.
+
+Scoring dimensions:
+- `novelty_score`
+- `contradiction_leverage`
+- `feasibility_score`
+- `overall_priority`
+
+This fusion ranking is designed to allocate research effort to hypotheses with highest expected innovation value.
+
+---
+
+## Patent and Journal Positioning
+
+### Candidate Novel Claims (Technical)
+
+1. Deterministic multi-paper contradiction mining coupled with hypothesis generation.
+2. Cross-domain bridge discovery using asymmetric concept prominence and novelty scoring.
+3. Unified deep/wide hypothesis portfolio optimization under reproducible scoring constraints.
+4. API-native innovation intelligence workflow combining contradiction, bridge, and hypothesis engines.
+
+### Reproducibility Evidence
+
+- Deterministic algorithms in semantic, contradiction, bridge, and portfolio layers.
+- Frozen dataclasses and explicit typed contracts for evidence objects.
+- Complete automated test coverage expansion with green suite (308 passed).
+
+### Suggested Journal Artifact Set
+
+For publication-grade submission, include:
+- Formal method section describing deep/wide/fusion algorithm definitions
+- Complexity analysis per stage (semantic extraction, pairwise contradiction mining, bridge detection)
+- Ablation study:
+  - without contradiction engine
+  - without bridge discovery
+  - deep-only vs wide-only vs fusion
+- Case studies with human-evaluated hypothesis novelty and actionability
+- API reproducibility appendix with request/response exemplars
+
+### Suggested Patent Artifact Set
+
+For patent filing preparation, include:
+- System architecture figure (ingestion → semantic profile → contradiction/bridge → portfolio)
+- Claim chart mapping each component to unique functional behavior
+- Deterministic scoring equations and threshold policy
+- Example implementation traces proving end-to-end novelty synthesis
 
 ---
 

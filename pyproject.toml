@@ -26,6 +26,12 @@ ml = [
     "hdbscan>=0.8.36",
     "spacy>=3.7.0",
 ]
+api = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "pydantic>=2.5.0",
+    "httpx>=0.27.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

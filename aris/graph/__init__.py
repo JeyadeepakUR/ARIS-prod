@@ -26,6 +26,9 @@ from aris.graph.hypothesis_impact import (
     HypothesisImpactScore,
     HypothesisImpactScoringTool,
 )
+from aris.graph.bridge_discovery import BridgeCandidate, BridgeDiscoveryEngine
+from aris.graph.contradiction_engine import ContradictionEngine, ContradictionRecord
+from aris.graph.hypothesis_portfolio import HypothesisPortfolioEngine, ResearchHypothesis
 from aris.graph.knowledge_graph import (
     Edge,
     KnowledgeGraph,
@@ -41,7 +44,6 @@ from aris.graph.research_planner import PlannerContext, ResearchAction, Research
 __all__ = [
     "Document",
     "DocumentCorpus",
-    "DocumentLoader",
     "PlainTextLoader",
     "PDFLoader",
     "DocumentIngestor",
@@ -57,6 +59,12 @@ __all__ = [
     "HypothesisInductionEngine",
     "HypothesisImpactScore",
     "HypothesisImpactScoringTool",
+    "ContradictionRecord",
+    "ContradictionEngine",
+    "BridgeCandidate",
+    "BridgeDiscoveryEngine",
+    "ResearchHypothesis",
+    "HypothesisPortfolioEngine",
     "ResearchAction",
     "PlannerContext",
     "ResearchPlanner",
