@@ -52,6 +52,31 @@ coverage/
 htmlcov/
 .pytest_cache/
 
+# Node / Next.js
+node_modules/
+.next/
+apps/web/.next/
+apps/web/node_modules/
+*.tsbuildinfo
+
 experiments/
 data/
-addn scripts/
+
+# Local runtime/state files
+.env
+.aris_object_store/
+*.sqlite3
+*.db
+aris_platform.db
+db.sqlite3
+
+# Local report artifacts (major project submission only)
+report/
+
+# Temporary local debug scripts
+test_domain_network.py
+
+# Root documentation policy
+/*.md
+!/README.md
+!/product_architecture.md
