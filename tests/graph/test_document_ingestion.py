@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import types
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -180,6 +181,80 @@ class TestPDFLoader:
         loader = PDFLoader()
         with pytest.raises(FileNotFoundError):
             loader.load(Path("nonexistent.pdf"))
+
+    def test_pdf_loader_uses_layout_fallback_and_normalizes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Fallback extraction mode should recover sparse pages and normalize text artifacts."""
+
+        class FakePage:
+            def __init__(self, primary: str, layout: str) -> None:
+                self.primary = primary
+                self.layout = layout
+
+            def extract_text(self, extraction_mode: str | None = None) -> str:
+                if extraction_mode == "layout":
+                    return self.layout
+                return self.primary
+
+        class FakePdfReader:
+            def __init__(self, _path: Path) -> None:
+                self.is_encrypted = False
+                self.pages = [
+                    FakePage("micro-\nwave   model\r\n\r\n", ""),
+                    FakePage("x", "Recovered page with enough alphanumeric characters 12345"),
+                ]
+
+        fake_module = types.SimpleNamespace(PdfReader=FakePdfReader)
+        monkeypatch.setitem(__import__("sys").modules, "pypdf", fake_module)
+
+        loader = PDFLoader()
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            doc = loader.load(temp_path)
+            assert "microwave model" in doc.content
+            assert "Recovered page with enough alphanumeric characters 12345" in doc.content
+            assert doc.metadata["page_count"] == "2"
+            assert doc.metadata["extracted_pages"] == "2"
+            assert doc.metadata["failed_pages"] == ""
+            assert int(doc.metadata["extracted_characters"]) > 0
+        finally:
+            temp_path.unlink()
+
+    def test_pdf_loader_tracks_failed_pages(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pages without meaningful text should be tracked in metadata."""
+
+        class FakePage:
+            def __init__(self, value: str) -> None:
+                self.value = value
+
+            def extract_text(self, extraction_mode: str | None = None) -> str:
+                if extraction_mode == "layout":
+                    return ""
+                return self.value
+
+        class FakePdfReader:
+            def __init__(self, _path: Path) -> None:
+                self.is_encrypted = False
+                self.pages = [
+                    FakePage("Adequate first page content with many words 12345"),
+                    FakePage("tiny"),
+                ]
+
+        fake_module = types.SimpleNamespace(PdfReader=FakePdfReader)
+        monkeypatch.setitem(__import__("sys").modules, "pypdf", fake_module)
+
+        loader = PDFLoader()
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            doc = loader.load(temp_path)
+            assert doc.metadata["extracted_pages"] == "1"
+            assert doc.metadata["failed_pages"] == "2"
+            assert doc.metadata["extraction_ratio"] == "1/2"
+        finally:
+            temp_path.unlink()
 
 
 class TestDocumentIngestor:

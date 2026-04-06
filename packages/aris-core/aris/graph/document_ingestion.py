@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+import re
 
 from aris.core.input_interface import InputInterface, InputPacket
 
@@ -100,6 +101,8 @@ class PlainTextLoader:
 class PDFLoader:
     """Loads PDF files and extracts text content."""
 
+    _MIN_MEANINGFUL_CHARS = 8
+
     def load(self, file_path: Path) -> Document:
         """
         Load a PDF file and extract text.
@@ -127,19 +130,31 @@ class PDFLoader:
 
         try:
             reader = PdfReader(file_path)
-            pages = []
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    pages.append(text)
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")
+                except Exception as e:
+                    raise ValueError(f"Failed to decrypt PDF: {e}") from e
+
+            pages: list[str] = []
+            failed_pages: list[str] = []
+
+            for idx, page in enumerate(reader.pages, start=1):
+                try:
+                    text = self._extract_page_text(page)
+                except Exception:
+                    text = ""
+
+                if self._is_meaningful_text(text):
+                    pages.append(self._canonicalize_pdf_text(text))
+                else:
+                    failed_pages.append(str(idx))
 
             if not pages:
                 raise ValueError(f"No extractable text in PDF: {file_path}")
 
             content = "\n\n".join(pages)
-
-            # Canonicalize: normalize whitespace
-            content = content.strip()
+            content = self._canonicalize_pdf_text(content)
 
             if not content:
                 raise ValueError(f"Empty document after extraction: {file_path}")
@@ -148,6 +163,9 @@ class PDFLoader:
                 "file_size": str(file_path.stat().st_size),
                 "page_count": str(len(reader.pages)),
                 "extracted_pages": str(len(pages)),
+                "failed_pages": ",".join(failed_pages),
+                "extraction_ratio": f"{len(pages)}/{len(reader.pages)}",
+                "extracted_characters": str(len(content)),
             }
 
             return Document(
@@ -163,6 +181,50 @@ class PDFLoader:
             if isinstance(e, ValueError):
                 raise
             raise ValueError(f"Failed to load PDF: {e}") from e
+
+    def _extract_page_text(self, page: object) -> str:
+        """Extract text with multiple strategies to handle diverse PDF layouts."""
+
+        extract_text = getattr(page, "extract_text", None)
+        if extract_text is None:
+            return ""
+
+        primary = extract_text()
+        if self._is_meaningful_text(primary):
+            return primary
+
+        try:
+            layout = extract_text(extraction_mode="layout")
+            if self._is_meaningful_text(layout):
+                return layout
+        except TypeError:
+            # Older pypdf versions do not accept extraction_mode.
+            pass
+
+        return primary or ""
+
+    @staticmethod
+    def _is_meaningful_text(text: str | None) -> bool:
+        if not text:
+            return False
+        alnum_count = sum(1 for char in text if char.isalnum())
+        if alnum_count >= PDFLoader._MIN_MEANINGFUL_CHARS:
+            return True
+        word_count = len([token for token in text.split() if token.strip()])
+        return word_count >= 2
+
+    @staticmethod
+    def _canonicalize_pdf_text(text: str) -> str:
+        """Normalize extracted text to reduce artifacts from PDF layout."""
+
+        normalized = text.replace("\x00", "")
+        normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+        normalized = re.sub(r"(?<=\w)-\n(?=\w)", "", normalized)
+        normalized = re.sub(r"[\t\f\v]+", " ", normalized)
+        normalized = re.sub(r"[ ]{2,}", " ", normalized)
+        normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+        normalized = "\n".join(line.strip() for line in normalized.split("\n"))
+        return normalized.strip()
 
 
 class DocumentIngestor:
