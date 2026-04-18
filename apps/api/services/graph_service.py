@@ -242,36 +242,63 @@ class GraphService:
         nodes_by_id = {node.id: node for node in nodes}
 
         for node in nodes:
-            source_title = ""
-            metadata_source = node.metadata_json.get("source") if isinstance(node.metadata_json, dict) else None
-            if isinstance(metadata_source, str):
-                source_title = metadata_source
+            meta = node.metadata_json if isinstance(node.metadata_json, dict) else {}
 
-            result = self._classify_node_with_llm_fallback(node.label, source_title)
-            node.tier = int(result["tier"])
-            cluster = result["cluster_id"]
-            node.cluster_id = cluster if isinstance(cluster, str) and cluster else self._derive_cluster(node.label)
-            if bool(result["low_value"]):
-                node.metadata_json = {**node.metadata_json, "low_value": True}
+            # For domain_network graphs, metadata already carries the correct domain.
+            # Prefer that over LLM classification to avoid cross-contamination.
+            if node.node_type == "domain":
+                node.tier = 1
+                node.cluster_id = node.label  # e.g. "Machine Learning"
+            elif node.node_type in {"concept", "bridge_concept"} and "domain" in meta:
+                raw_domain = str(meta["domain"])
+                node.tier = 3 if node.node_type == "concept" else 2
+                node.cluster_id = raw_domain.replace("_", " ").title()
+            elif node.node_type == "document":
+                node.tier = 1
+                node.cluster_id = self._derive_cluster(node.label)
+            else:
+                source_title = str(meta.get("source", ""))
+                result = self._classify_node_with_llm_fallback(node.label, source_title)
+                node.tier = int(result["tier"])
+                cluster = result["cluster_id"]
+                node.cluster_id = cluster if isinstance(cluster, str) and cluster else self._derive_cluster(node.label)
+                if bool(result["low_value"]):
+                    node.metadata_json = {**meta, "low_value": True}
 
         for edge in edges:
+            meta = edge.metadata_json if isinstance(edge.metadata_json, dict) else {}
+
+            # cross_domain_bridge edges are always inter-domain by construction.
+            if edge.edge_type == "cross_domain_bridge":
+                edge.edge_category = "INTER_DOMAIN_BRIDGE"
+                if not edge.bridge_concept:
+                    edge.bridge_concept = str(meta.get("bridge_concept", "")) or None
+                continue
+
+            # belongs_to_domain and has_concept are always intra-domain.
+            if edge.edge_type in {"belongs_to_domain", "has_concept"}:
+                edge.edge_category = "INTRA_DOMAIN"
+                continue
+
             source_node = nodes_by_id.get(edge.source_node_id)
             target_node = nodes_by_id.get(edge.target_node_id)
             if source_node is None or target_node is None:
                 edge.edge_category = "INTRA_DOMAIN"
                 continue
 
-            if abs(source_node.tier - target_node.tier) == 1 and (
-                source_node.cluster_id == target_node.cluster_id
-            ):
-                edge.edge_category = "HIERARCHICAL"
-            elif (source_node.cluster_id or "") == (target_node.cluster_id or ""):
-                edge.edge_category = "INTRA_DOMAIN"
-            else:
-                edge.edge_category = "INTER_DOMAIN_BRIDGE"
+            src_cluster = source_node.cluster_id or ""
+            tgt_cluster = target_node.cluster_id or ""
 
-            if edge.edge_category == "INTER_DOMAIN_BRIDGE" and not edge.bridge_concept:
-                edge.bridge_concept = self._synthesize_bridge_concept_with_llm_fallback(source_node, target_node, edge)
+            if src_cluster != tgt_cluster and src_cluster and tgt_cluster:
+                edge.edge_category = "INTER_DOMAIN_BRIDGE"
+                if not edge.bridge_concept:
+                    edge.bridge_concept = self._synthesize_bridge_concept_with_llm_fallback(
+                        source_node, target_node, edge
+                    )
+            elif abs(source_node.tier - target_node.tier) == 1 and src_cluster == tgt_cluster:
+                edge.edge_category = "HIERARCHICAL"
+            else:
+                edge.edge_category = "INTRA_DOMAIN"
 
         await db.flush()
 

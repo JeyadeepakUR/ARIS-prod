@@ -12,6 +12,11 @@ class MockProvider:
     def complete(self, prompt: str, *, max_tokens: int = 512, temperature: float = 0.2) -> str:
         prompt_lower = prompt.lower()
 
+        # Order matters: more specific checks first.
+        if "falsifiable" in prompt_lower or (
+            "hypothesis" in prompt_lower and "statement" in prompt_lower
+        ):
+            return self._hypothesis_response(prompt)
         if "bridge concept" in prompt_lower or "bridge_concept" in prompt_lower:
             return self._bridge_response(prompt)
         if "classify" in prompt_lower and ("tier" in prompt_lower or "domain" in prompt_lower):

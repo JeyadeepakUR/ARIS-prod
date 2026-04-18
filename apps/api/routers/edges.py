@@ -58,6 +58,8 @@ async def list_edges(
             source_node_id=edge.source_node_id,
             target_node_id=edge.target_node_id,
             edge_type=edge.edge_type,
+            edge_category=edge.edge_category,
+            bridge_concept=edge.bridge_concept,
             confidence=edge.confidence,
             evidence={
                 "text": edge.evidence,

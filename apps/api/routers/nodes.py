@@ -54,6 +54,8 @@ async def list_nodes(
             document_id=node.document_id,
             label=node.label,
             node_type=node.node_type,
+            tier=node.tier,
+            cluster_id=node.cluster_id,
             metadata=node.metadata_json,
             created_at=node.created_at,
         )
