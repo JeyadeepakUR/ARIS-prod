@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, JSON, String, Text, Uuid, func
-from sqlalchemy.orm import Mapped, mapped_column, deferred
+from sqlalchemy.orm import Mapped, mapped_column
 
 from apps.api.core.database import Base
 
@@ -26,7 +26,7 @@ class Document(Base):
     file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", index=True)
     error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
-    full_text: Mapped[str | None] = deferred(mapped_column(Text, nullable=True))
+    full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict[str, object]] = mapped_column("metadata", JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
