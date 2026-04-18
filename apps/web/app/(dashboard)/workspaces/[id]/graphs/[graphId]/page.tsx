@@ -68,9 +68,9 @@ export default function GraphCanvasPage() {
   );
 
   return (
-    <div className="-mx-5 -mt-5 md:-mx-7 md:-mt-7 flex flex-col min-h-[calc(100vh-80px)]">
-      {/* Top bar */}
-      <div className="flex items-center justify-between border-b border-white/6 px-5 py-3 md:px-7">
+    <div>
+      {/* Breadcrumb + controls */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
             href={`/workspaces/${workspaceId}/graphs`}
@@ -101,13 +101,13 @@ export default function GraphCanvasPage() {
       </div>
 
       {error ? (
-        <div className="mx-5 mt-4 rounded-xl border border-danger/25 bg-danger/8 px-4 py-3 text-sm text-red-300 md:mx-7">
+        <div className="mb-4 rounded-xl border border-danger/25 bg-danger/8 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       ) : null}
 
-      {/* Canvas */}
-      <div className="flex-1 relative" style={{ minHeight: 600 }}>
+      {/* Canvas — explicit height required by ReactFlow */}
+      <div className="overflow-hidden rounded-2xl border border-white/8" style={{ height: 620 }}>
         <ReactFlowProvider>
           <GraphCanvas
             key={fitTick}
@@ -122,7 +122,7 @@ export default function GraphCanvasPage() {
 
       {/* Edge evidence panel */}
       {selectedEdge && (
-        <div className="border-t border-white/6 px-5 py-4 md:px-7">
+        <div className="mt-4">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-2">Edge Evidence</p>
           <EdgeTooltip edge={selectedEdge} />
         </div>

@@ -375,7 +375,7 @@ export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, on
   };
 
   return (
-    <div className="relative h-full min-h-[600px] overflow-hidden" style={{ background: "#0d0e14" }}>
+    <div style={{ width: "100%", height: "100%", background: "#0d0e14" }}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}

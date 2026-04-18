@@ -67,11 +67,11 @@ export async function buildGraph(
 }
 
 export async function listGraphNodes(graphId: string): Promise<GraphNode[]> {
-  return apiFetch<GraphNode[]>(`/graphs/${graphId}/nodes`);
+  return apiFetch<GraphNode[]>(`/graphs/${graphId}/nodes?size=500`);
 }
 
 export async function listGraphEdges(graphId: string): Promise<GraphEdge[]> {
-  return apiFetch<GraphEdge[]>(`/graphs/${graphId}/edges`);
+  return apiFetch<GraphEdge[]>(`/graphs/${graphId}/edges?size=500`);
 }
 
 export async function listHypotheses(
