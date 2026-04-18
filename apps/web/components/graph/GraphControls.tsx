@@ -21,12 +21,8 @@ export function GraphControls({
 }: GraphControlsProps) {
   const bridgeFocusMode = useGraphStore((state) => state.bridgeFocusMode);
   const toggleBridgeFocus = useGraphStore((state) => state.toggleBridgeFocus);
-  let zoomLevel = 1;
-  try {
-    zoomLevel = useViewport().zoom;
-  } catch {
-    zoomLevel = 1;
-  }
+  const viewport = useViewport();
+  const zoomLevel = viewport?.zoom ?? 1;
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-4 rounded-xl border border-spice/20 bg-white/75 p-3">
