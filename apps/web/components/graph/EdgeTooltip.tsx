@@ -1,3 +1,5 @@
+"use client";
+
 import type { GraphEdge } from "../../lib/api/graphs";
 
 type EdgeTooltipProps = {

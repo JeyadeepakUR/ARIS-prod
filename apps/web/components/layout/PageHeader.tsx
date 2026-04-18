@@ -1,3 +1,5 @@
+"use client";
+
 type PageHeaderProps = {
   eyebrow: string;
   title: string;

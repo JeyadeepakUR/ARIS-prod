@@ -1,3 +1,5 @@
+"use client";
+
 import { Handle, Position } from "reactflow";
 
 type NodeCardProps = {

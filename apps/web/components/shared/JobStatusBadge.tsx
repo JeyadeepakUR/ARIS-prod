@@ -1,3 +1,5 @@
+"use client";
+
 type JobStatusBadgeProps = {
   status: string;
 };
