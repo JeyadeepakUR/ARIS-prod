@@ -468,6 +468,12 @@ class GraphService:
         domain_count = 0
         concept_count = 0
 
+        # ── Shared concept registry: concept_label → Node (dedup across docs) ──
+        # Same concept appearing in multiple documents shares ONE node.
+        shared_concept_nodes: dict[str, Node] = {}   # label → Node
+        # domain_label → Node (also deduped: same domain across docs = one node)
+        shared_domain_nodes: dict[str, Node] = {}
+
         for document in documents:
             doc_node = Node(
                 node_id=uuid4(),
@@ -478,36 +484,35 @@ class GraphService:
             )
             nodes.append(doc_node)
 
-            tokens = self._tokenize(document.content)
-            domain_to_concepts = self._extract_domain_concepts(tokens)
-
-            # Supplement with LLM-identified domains when keyword matching is insufficient
-            if len(domain_to_concepts) < 2:
-                llm_domains = self._extract_domains_with_llm(document.content)
-                for domain in llm_domains:
-                    if domain not in domain_to_concepts:
-                        domain_specific = [t for t in tokens if len(t) >= 4 and t not in self._STOPWORDS]
-                        top_concepts = [t for t, _ in Counter(domain_specific).most_common(6)]
-                        if top_concepts:
-                            domain_to_concepts[domain] = top_concepts
+            # Use LLM to extract meaningful named concepts (not raw keyword counts)
+            domain_to_concepts = self._extract_document_concepts_with_llm(
+                document.content, document.source
+            )
 
             if len(domain_to_concepts) < 2:
                 continue
 
             domain_nodes: dict[str, Node] = {}
-            concept_nodes: dict[tuple[str, str], Node] = {}
 
             for domain, concepts in domain_to_concepts.items():
-                d_node = Node(
-                    node_id=uuid4(),
-                    document_id=document.document_id,
-                    label=domain.replace("_", " ").title(),
-                    node_type="domain",
-                    metadata={"domain": domain, "document": document.source},
-                )
+                domain_label = domain.replace("_", " ").title()
+
+                # Reuse existing domain node if this domain already seen across docs
+                if domain_label in shared_domain_nodes:
+                    d_node = shared_domain_nodes[domain_label]
+                else:
+                    d_node = Node(
+                        node_id=uuid4(),
+                        document_id=document.document_id,
+                        label=domain_label,
+                        node_type="domain",
+                        metadata={"domain": domain, "document": document.source},
+                    )
+                    shared_domain_nodes[domain_label] = d_node
+                    nodes.append(d_node)
+                    domain_count += 1
+
                 domain_nodes[domain] = d_node
-                nodes.append(d_node)
-                domain_count += 1
 
                 edges.append(
                     Edge(
@@ -515,7 +520,7 @@ class GraphService:
                         source_id=doc_node.node_id,
                         target_id=d_node.node_id,
                         edge_type="belongs_to_domain",
-                        evidence=f"Document {document.source} contains signals for domain {domain}.",
+                        evidence=f"Document '{document.source}' contains research in {domain_label}.",
                         reasoning_trace_id=uuid4(),
                         confidence=0.82,
                         metadata={"strategy": "domain_network", "domain": domain},
@@ -524,17 +529,26 @@ class GraphService:
                 )
 
                 for concept in concepts:
-                    c_node = Node(
-                        node_id=uuid4(),
-                        document_id=document.document_id,
-                        label=concept,
-                        node_type="concept",
-                        metadata={"domain": domain, "document": document.source},
-                    )
-                    concept_nodes[(domain, concept)] = c_node
-                    nodes.append(c_node)
-                    concept_count += 1
+                    concept_label = concept.strip().lower()
+                    if not concept_label:
+                        continue
 
+                    # Reuse node if this concept already exists (from another doc or domain)
+                    if concept_label in shared_concept_nodes:
+                        c_node = shared_concept_nodes[concept_label]
+                    else:
+                        c_node = Node(
+                            node_id=uuid4(),
+                            document_id=document.document_id,
+                            label=concept_label,
+                            node_type="concept",
+                            metadata={"domain": domain, "document": document.source},
+                        )
+                        shared_concept_nodes[concept_label] = c_node
+                        nodes.append(c_node)
+                        concept_count += 1
+
+                    # Always add the domain→concept edge (even for reused nodes)
                     edges.append(
                         Edge(
                             edge_id=uuid4(),
@@ -542,80 +556,91 @@ class GraphService:
                             target_id=c_node.node_id,
                             edge_type="has_concept",
                             evidence=(
-                                f"Concept '{concept}' is strongly associated with domain {domain} "
-                                f"in {document.source}."
+                                f"'{concept_label}' is a key concept in {domain_label} "
+                                f"as identified in '{document.source}'."
                             ),
                             reasoning_trace_id=uuid4(),
                             confidence=0.8,
-                            metadata={"strategy": "domain_network", "domain": domain, "concept": concept},
+                            metadata={"strategy": "domain_network", "domain": domain, "concept": concept_label},
                             created_at=datetime.now(UTC),
                         )
                     )
 
+            # ── Bridge detection: concepts shared across domain pairs ──
             for left_domain, right_domain in combinations(domain_to_concepts.keys(), 2):
-                bridges = sorted(set(domain_to_concepts[left_domain]) & set(domain_to_concepts[right_domain]))
+                left_concepts = set(c.strip().lower() for c in domain_to_concepts[left_domain])
+                right_concepts = set(c.strip().lower() for c in domain_to_concepts[right_domain])
+                bridges = sorted(left_concepts & right_concepts)
                 if not bridges:
                     continue
 
                 left_node = domain_nodes[left_domain]
                 right_node = domain_nodes[right_domain]
 
-                for bridge in bridges[:3]:
-                    bridge_node = Node(
-                        node_id=uuid4(),
-                        document_id=document.document_id,
-                        label=bridge,
-                        node_type="bridge_concept",
-                        metadata={
-                            "domains": f"{left_domain},{right_domain}",
-                            "document": document.source,
-                        },
-                    )
-                    nodes.append(bridge_node)
-                    bridge_count += 1
+                for bridge in bridges[: self._MAX_BRIDGES_PER_PAIR]:
+                    # Upgrade the shared concept node to bridge_concept type
+                    if bridge in shared_concept_nodes:
+                        bridge_node = shared_concept_nodes[bridge]
+                        bridge_node = Node(
+                            node_id=bridge_node.node_id,
+                            document_id=bridge_node.document_id,
+                            label=bridge_node.label,
+                            node_type="bridge_concept",
+                            metadata={
+                                "domains": f"{left_domain},{right_domain}",
+                                "document": document.source,
+                            },
+                        )
+                        # Replace in shared registry and node list
+                        shared_concept_nodes[bridge] = bridge_node
+                        nodes = [bridge_node if n.node_id == bridge_node.node_id else n for n in nodes]
+                    else:
+                        bridge_node = Node(
+                            node_id=uuid4(),
+                            document_id=document.document_id,
+                            label=bridge,
+                            node_type="bridge_concept",
+                            metadata={
+                                "domains": f"{left_domain},{right_domain}",
+                                "document": document.source,
+                            },
+                        )
+                        shared_concept_nodes[bridge] = bridge_node
+                        nodes.append(bridge_node)
 
-                    edges.append(
-                        Edge(
-                            edge_id=uuid4(),
-                            source_id=left_node.node_id,
-                            target_id=bridge_node.node_id,
-                            edge_type="cross_domain_bridge",
-                            evidence=(
-                                f"Bridge concept '{bridge}' links {left_domain} and {right_domain} "
-                                f"within {document.source}."
-                            ),
-                            reasoning_trace_id=uuid4(),
-                            confidence=0.86,
-                            metadata={
-                                "strategy": "domain_network",
-                                "bridge_concept": bridge,
-                                "from": left_domain,
-                                "to": right_domain,
-                            },
-                            created_at=datetime.now(UTC),
-                        )
+                    bridge_count += 1
+                    bridge_meta = {
+                        "strategy": "domain_network",
+                        "bridge_concept": bridge,
+                        "from": left_domain,
+                        "to": right_domain,
+                    }
+                    bridge_evidence = (
+                        f"'{bridge}' bridges {left_domain.replace('_',' ')} and "
+                        f"{right_domain.replace('_',' ')} in '{document.source}'."
                     )
-                    edges.append(
-                        Edge(
-                            edge_id=uuid4(),
-                            source_id=bridge_node.node_id,
-                            target_id=right_node.node_id,
-                            edge_type="cross_domain_bridge",
-                            evidence=(
-                                f"Bridge concept '{bridge}' links {left_domain} and {right_domain} "
-                                f"within {document.source}."
-                            ),
-                            reasoning_trace_id=uuid4(),
-                            confidence=0.86,
-                            metadata={
-                                "strategy": "domain_network",
-                                "bridge_concept": bridge,
-                                "from": left_domain,
-                                "to": right_domain,
-                            },
-                            created_at=datetime.now(UTC),
-                        )
-                    )
+                    edges.append(Edge(
+                        edge_id=uuid4(),
+                        source_id=left_node.node_id,
+                        target_id=bridge_node.node_id,
+                        edge_type="cross_domain_bridge",
+                        evidence=bridge_evidence,
+                        reasoning_trace_id=uuid4(),
+                        confidence=0.86,
+                        metadata=bridge_meta,
+                        created_at=datetime.now(UTC),
+                    ))
+                    edges.append(Edge(
+                        edge_id=uuid4(),
+                        source_id=bridge_node.node_id,
+                        target_id=right_node.node_id,
+                        edge_type="cross_domain_bridge",
+                        evidence=bridge_evidence,
+                        reasoning_trace_id=uuid4(),
+                        confidence=0.86,
+                        metadata=bridge_meta,
+                        created_at=datetime.now(UTC),
+                    ))
 
         graph = KnowledgeGraph(
             graph_id=uuid4(),
@@ -634,46 +659,98 @@ class GraphService:
         }
         return graph, trace
 
-    def _tokenize(self, text: str) -> list[str]:
-        return re.findall(r"[a-z][a-z0-9_+-]{2,}", text.lower())
+    # ------------------------------------------------------------------
+    # LLM-based concept extraction (replaces keyword-frequency approach)
+    # ------------------------------------------------------------------
 
-    def _extract_domain_concepts(self, tokens: list[str]) -> dict[str, list[str]]:
+    _MAX_DOMAINS_PER_DOC = 4
+    _MAX_CONCEPTS_PER_DOMAIN = 6
+    _MAX_BRIDGES_PER_PAIR = 3
+
+    def _extract_document_concepts_with_llm(self, content: str, source: str) -> dict[str, list[str]]:
+        """
+        Ask the LLM to identify the key research domains and their most important
+        named concepts from this document.  Returns {domain_key: [concept, ...]}
+        with at most _MAX_DOMAINS_PER_DOC domains and _MAX_CONCEPTS_PER_DOMAIN
+        concepts each.
+        """
+        excerpt = content[:3000]
+        try:
+            prompt = (
+                "You are a research knowledge graph builder. "
+                "Analyse the following excerpt from a research paper and extract:\n"
+                "1. The 2-4 primary research DOMAINS (e.g. 'machine_learning', 'computer_vision', "
+                "'natural_language_processing', 'cybersecurity', 'robotics', 'healthcare', 'blockchain').\n"
+                "2. For each domain, the 4-6 most important NAMED research concepts — these must be "
+                "specific multi-word or compound terms actually used in the paper "
+                "(e.g. 'transformer architecture', 'contrastive learning', 'federated learning', "
+                "'image captioning', 'anomaly detection', 'proof-of-stake consensus'). "
+                "Do NOT use generic single words like 'model', 'data', 'deep', 'learning', 'image'.\n\n"
+                f"Paper excerpt:\n{excerpt}\n\n"
+                "Return ONLY a JSON object:\n"
+                '{"domains": [{"name": "domain_key", "concepts": ["concept 1", "concept 2", ...]}]}'
+            )
+            result = self._provider.complete_json(prompt, max_tokens=400)
+            domains_raw = result.get("domains", [])
+            if not isinstance(domains_raw, list):
+                raise ValueError("bad shape")
+
+            out: dict[str, list[str]] = {}
+            for entry in domains_raw[: self._MAX_DOMAINS_PER_DOC]:
+                domain_name = str(entry.get("name", "")).strip().lower().replace(" ", "_")
+                concepts_raw = entry.get("concepts", [])
+                if not domain_name or not isinstance(concepts_raw, list):
+                    continue
+                cleaned = []
+                for c in concepts_raw:
+                    c = str(c).strip().lower()
+                    # Drop single bare words that are stopwords or too generic
+                    if c and len(c) >= 4 and c not in self._STOPWORDS:
+                        cleaned.append(c)
+                if cleaned:
+                    out[domain_name] = cleaned[: self._MAX_CONCEPTS_PER_DOMAIN]
+
+            return out if len(out) >= 2 else {}
+        except Exception:
+            pass
+
+        # Fallback to keyword matching if LLM fails
+        return self._extract_domain_concepts_fallback(self._tokenize(content))
+
+    def _extract_domain_concepts_fallback(self, tokens: list[str]) -> dict[str, list[str]]:
+        """Keyword-frequency fallback used only when LLM is unavailable."""
         domain_scores: dict[str, int] = {}
         for domain, keywords in self._DOMAIN_KEYWORDS.items():
             score = sum(1 for token in tokens if token in keywords)
-            if score > 0:
+            if score >= 2:
                 domain_scores[domain] = score
 
         if len(domain_scores) < 2:
             return {}
 
         token_counts = Counter(
-            token
-            for token in tokens
-            if token not in self._STOPWORDS and len(token) >= 4 and not token.isdigit()
+            token for token in tokens
+            if token not in self._STOPWORDS and len(token) >= 5 and not token.isdigit()
         )
-        global_concepts = [token for token, _ in token_counts.most_common(10)]
 
         domain_to_concepts: dict[str, list[str]] = {}
-        for domain in domain_scores:
-            domain_keywords = self._DOMAIN_KEYWORDS[domain]
-            domain_specific = [token for token in token_counts if token in domain_keywords]
-            shared_candidates = [token for token in global_concepts if token not in self._STOPWORDS]
-
+        top_domains = sorted(domain_scores, key=lambda d: -domain_scores[d])[: self._MAX_DOMAINS_PER_DOC]
+        for domain in top_domains:
+            kw = self._DOMAIN_KEYWORDS[domain]
+            domain_specific = [t for t in token_counts if t in kw]
             merged: list[str] = []
-            for token in domain_specific + shared_candidates:
-                if token not in merged:
-                    merged.append(token)
-                if len(merged) >= 8:
+            for t in domain_specific:
+                if t not in merged:
+                    merged.append(t)
+                if len(merged) >= self._MAX_CONCEPTS_PER_DOMAIN:
                     break
-
             if merged:
                 domain_to_concepts[domain] = merged
 
-        if len(domain_to_concepts) < 2:
-            return {}
+        return domain_to_concepts if len(domain_to_concepts) >= 2 else {}
 
-        return domain_to_concepts
+    def _tokenize(self, text: str) -> list[str]:
+        return re.findall(r"[a-z][a-z0-9_+-]{2,}", text.lower())
 
     def _extract_domains_with_llm(self, content_snippet: str) -> list[str]:
         """Ask the LLM to identify research domains present in a document snippet."""

@@ -17,6 +17,10 @@ class MockProvider:
             "hypothesis" in prompt_lower and "statement" in prompt_lower
         ):
             return self._hypothesis_response(prompt)
+        if "named research concepts" in prompt_lower or (
+            "knowledge graph builder" in prompt_lower and "domains" in prompt_lower
+        ):
+            return self._concept_extraction_response(prompt)
         if "bridge concept" in prompt_lower or "bridge_concept" in prompt_lower:
             return self._bridge_response(prompt)
         if "classify" in prompt_lower and ("tier" in prompt_lower or "domain" in prompt_lower):
@@ -86,6 +90,49 @@ class MockProvider:
             "evidence_basis": "Bridge edge confidence and shared concept co-occurrence in both documents.",
             "hypothesis_type": "causal",
         })
+
+    def _concept_extraction_response(self, prompt: str) -> str:
+        """Return mock named concepts for concept-extraction prompts."""
+        prompt_lower = prompt.lower()
+        # Pick domains based on keywords in the excerpt
+        domains = []
+        if any(w in prompt_lower for w in ["image", "vision", "caption", "object"]):
+            domains.append({
+                "name": "computer_vision",
+                "concepts": ["image captioning", "visual attention mechanism", "convolutional feature extraction", "object detection pipeline", "vision transformer"],
+            })
+        if any(w in prompt_lower for w in ["language", "text", "nlp", "bert", "gpt", "transformer"]):
+            domains.append({
+                "name": "natural_language_processing",
+                "concepts": ["pre-trained language model", "attention-based encoding", "sequence-to-sequence learning", "text generation", "semantic representation"],
+            })
+        if any(w in prompt_lower for w in ["deep", "neural", "training", "gradient", "loss"]):
+            domains.append({
+                "name": "machine_learning",
+                "concepts": ["deep neural network", "transfer learning", "contrastive learning", "fine-tuning strategy", "self-supervised pretraining"],
+            })
+        if any(w in prompt_lower for w in ["security", "attack", "threat", "malware", "intrusion"]):
+            domains.append({
+                "name": "cybersecurity",
+                "concepts": ["adversarial attack detection", "intrusion detection system", "threat modelling", "anomaly-based detection", "federated security"],
+            })
+        if any(w in prompt_lower for w in ["blockchain", "consensus", "ledger", "smart contract"]):
+            domains.append({
+                "name": "blockchain",
+                "concepts": ["proof-of-stake consensus", "smart contract execution", "decentralised identity", "on-chain governance", "zero-knowledge proof"],
+            })
+        if any(w in prompt_lower for w in ["medical", "clinical", "patient", "diagnosis", "health"]):
+            domains.append({
+                "name": "healthcare",
+                "concepts": ["clinical decision support", "medical image analysis", "patient outcome prediction", "electronic health record", "biomarker detection"],
+            })
+        # Ensure at least two domains
+        if len(domains) < 2:
+            domains = [
+                {"name": "machine_learning", "concepts": ["deep neural network", "transfer learning", "contrastive learning", "self-supervised pretraining", "model fine-tuning"]},
+                {"name": "computer_vision", "concepts": ["image captioning", "visual attention mechanism", "object detection", "feature extraction", "visual grounding"]},
+            ]
+        return json.dumps({"domains": domains[:4]})
 
     def _domain_response(self, prompt: str) -> str:
         return json.dumps({
