@@ -60,5 +60,12 @@ def get_provider(
         from aris.llm.ollama_provider import OllamaProvider
         return OllamaProvider(model=model or "llama3.2", base_url=base_url or "http://localhost:11434")
 
+    if name == "openrouter":
+        from aris.llm.openrouter_provider import OpenRouterProvider
+        return OpenRouterProvider(
+            model=model or "meta-llama/llama-4-scout:free",
+            api_key=api_key,
+        )
+
     from aris.llm.mock_provider import MockProvider
     return MockProvider()
