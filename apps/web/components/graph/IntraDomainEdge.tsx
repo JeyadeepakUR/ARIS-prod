@@ -11,9 +11,9 @@ export function IntraDomainEdge(props: EdgeProps) {
       id={props.id}
       path={path}
       style={{
-        stroke: "#d0cac0",
+        stroke: "rgba(255,255,255,0.12)",
         strokeWidth: 1,
-        opacity: props.style?.opacity ?? 0.3,
+        opacity: props.style?.opacity ?? 0.6,
       }}
     />
   );

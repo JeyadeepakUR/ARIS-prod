@@ -72,60 +72,83 @@ export default function WorkspacesPage() {
       <PageHeader
         eyebrow="Workspace Hub"
         title="Your Workspaces"
-        description="Create a workspace, then upload documents and monitor ingestion in real time."
+        description="Create a workspace to upload documents and build knowledge graphs."
       />
 
-      <form onSubmit={onCreateWorkspace} className="mb-6 grid gap-3 md:grid-cols-[1fr_auto]">
+      {/* Create form */}
+      <form onSubmit={onCreateWorkspace} className="mb-8 flex items-center gap-3">
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Workspace name"
-          className="rounded-xl border border-spice/20 bg-white/90 px-4 py-3 text-sm"
+          placeholder="New workspace name…"
+          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-ink placeholder:text-ink-3 transition focus:border-accent focus:bg-white/8"
         />
         <button
           type="submit"
-          disabled={submitting}
-          className="rounded-xl bg-spice px-4 py-3 text-sm font-semibold uppercase tracking-wide text-white disabled:opacity-60"
+          disabled={submitting || !name.trim()}
+          className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-2 disabled:opacity-40"
         >
-          {submitting ? "Creating..." : "Create Workspace"}
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          {submitting ? "Creating…" : "Create"}
         </button>
       </form>
 
-      {error ? <p className="mb-3 text-sm text-red-700">{error}</p> : null}
-      {loading ? <p className="text-sm text-ink/70">Loading workspaces...</p> : null}
+      {error ? (
+        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-red-300">{error}</div>
+      ) : null}
 
-      <div className="grid gap-3">
-        {workspaces.map((workspace) => (
-          <div key={workspace.id} className="rounded-xl border border-spice/20 bg-white/75 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold text-ink">{workspace.name}</p>
-                <p className="text-xs uppercase tracking-wide text-ink/65">{workspace.slug}</p>
+      {/* Workspaces grid */}
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-40 animate-pulse rounded-2xl bg-white/4 border border-white/6" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {workspaces.map((workspace) => (
+            <div key={workspace.id} className="glass rounded-2xl p-5 transition hover:border-white/14 group">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent-2 text-sm font-bold">
+                    {workspace.name[0]?.toUpperCase()}
+                  </span>
+                  <div>
+                    <p className="font-semibold text-ink text-sm">{workspace.name}</p>
+                    <p className="text-[11px] text-ink-3 mt-0.5">{workspace.slug}</p>
+                  </div>
+                </div>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-success/30 bg-success/10">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                </span>
               </div>
-              <div className="flex gap-2">
+
+              <div className="mt-5 flex gap-2">
                 <Link
                   href={`/workspaces/${workspace.id}/documents`}
-                  className="rounded-lg border border-pine/20 bg-pine px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white"
+                  className="flex-1 rounded-xl bg-white/6 border border-white/8 py-2 text-center text-xs font-semibold text-ink-2 transition hover:bg-white/10 hover:text-ink"
                 >
                   Documents
                 </Link>
                 <Link
                   href={`/workspaces/${workspace.id}/graphs`}
-                  className="rounded-lg border border-spice/20 bg-spice px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white"
+                  className="flex-1 rounded-xl bg-accent/12 border border-accent/20 py-2 text-center text-xs font-semibold text-accent-2 transition hover:bg-accent/20"
                 >
                   Graphs
                 </Link>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {!loading && workspaces.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-spice/30 bg-white/60 p-6 text-sm text-ink/75">
-            No workspaces yet. Create one to begin.
-          </p>
-        ) : null}
-      </div>
+          {workspaces.length === 0 ? (
+            <div className="col-span-full rounded-2xl border border-dashed border-white/10 bg-white/2 p-10 text-center">
+              <p className="text-sm text-ink-2">No workspaces yet. Create one above to begin.</p>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

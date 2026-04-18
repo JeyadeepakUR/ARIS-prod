@@ -67,67 +67,93 @@ export default function WorkspaceDocumentsPage() {
     <div>
       <PageHeader
         eyebrow="Documents"
-        title="Upload And Track"
-        description="Start an ingest job and watch pending, processing, and final status updates every 2 seconds."
+        title="Upload & Ingest"
+        description="Upload .txt or .pdf files. ARIS ingests the content and prepares it for graph building."
+        action={
+          <Link
+            href={`/workspaces/${workspaceId}/graphs`}
+            className="flex items-center gap-2 rounded-xl bg-accent/12 border border-accent/20 px-4 py-2 text-xs font-semibold text-accent-2 transition hover:bg-accent/20"
+          >
+            Build Graph →
+          </Link>
+        }
       />
 
-      <div className="mb-6 rounded-2xl border border-spice/20 bg-white/75 p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <input
-            type="file"
-            accept=".txt,.pdf"
-            onChange={(event) => {
-              setSelectedFile(event.target.files?.[0] ?? null);
-            }}
-            className="w-full rounded-lg border border-spice/25 bg-white p-2 text-sm"
-          />
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={!selectedFile || submitting}
-            className="rounded-lg bg-pine px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white disabled:opacity-60"
-          >
-            {submitting ? "Starting..." : "Upload Document"}
-          </button>
+      {/* Upload zone */}
+      <div className="mb-6 rounded-2xl border border-dashed border-white/12 bg-white/3 p-6 transition hover:border-accent/30 hover:bg-white/5">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <svg className="h-10 w-10 text-ink-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 12l-4-4m0 0L8 12m4-4v12"/>
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-ink">Drop a file or click to browse</p>
+            <p className="mt-1 text-xs text-ink-3">.txt or .pdf · max 10 MB</p>
+          </div>
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              accept=".txt,.pdf"
+              className="sr-only"
+              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+            />
+            <span className="rounded-xl border border-white/12 bg-white/6 px-5 py-2 text-xs font-semibold text-ink-2 transition hover:bg-white/10 hover:text-ink">
+              {selectedFile ? selectedFile.name : "Choose file"}
+            </span>
+          </label>
+          {selectedFile && (
+            <button
+              type="button"
+              onClick={handleUpload}
+              disabled={submitting}
+              className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-2 disabled:opacity-50"
+            >
+              {submitting ? "Uploading…" : `Upload "${selectedFile.name}"`}
+            </button>
+          )}
         </div>
-        {message ? <p className="mt-3 text-sm text-ink/80">{message}</p> : null}
-        {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
-        {pollError ? <p className="mt-3 text-sm text-red-700">Polling error: {pollError}</p> : null}
+
+        {message ? (
+          <div className="mt-4 rounded-xl border border-success/25 bg-success/8 px-4 py-3 text-sm text-emerald-300">{message}</div>
+        ) : null}
+        {error ? (
+          <div className="mt-4 rounded-xl border border-danger/25 bg-danger/8 px-4 py-3 text-sm text-red-300">{error}</div>
+        ) : null}
+        {pollError ? (
+          <div className="mt-4 rounded-xl border border-warning/25 bg-warning/8 px-4 py-3 text-sm text-yellow-300">Polling: {pollError}</div>
+        ) : null}
       </div>
 
-      <div className="mb-6 rounded-2xl border border-spice/20 bg-white/70 p-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-spice">Live Job Status</p>
-        {job ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+      {/* Active job */}
+      {job ? (
+        <div className="mb-6 glass rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-2">Active job</p>
             <JobStatusBadge status={job.status} />
-            <span className="text-ink/70">Job ID: {job.id}</span>
           </div>
-        ) : (
-          <p className="text-sm text-ink/70">No active job. Upload a document to begin.</p>
-        )}
-      </div>
+          <p className="mt-2 text-xs font-mono text-ink-3">{job.id}</p>
+        </div>
+      ) : null}
 
-      <div className="rounded-2xl border border-spice/20 bg-white/65 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-spice">Recent Upload Jobs</p>
-          <div className="flex items-center gap-3">
-            <Link href={`/workspaces/${workspaceId}/graphs`} className="text-xs font-semibold uppercase tracking-wide text-spice">
-              Go to Graphs
-            </Link>
-            <Link href="/workspaces" className="text-xs font-semibold uppercase tracking-wide text-pine">
-              Back to Workspaces
-            </Link>
+      {/* Upload history */}
+      <div className="glass rounded-2xl p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ink-2">Session uploads</p>
+        {records.length === 0 ? (
+          <p className="text-sm text-ink-3">No uploads yet this session.</p>
+        ) : (
+          <div className="space-y-2">
+            {records.map((record) => (
+              <div key={record.jobId} className="flex items-center justify-between rounded-xl border border-white/6 bg-white/3 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-ink">{record.documentName}</p>
+                  <p className="text-xs text-ink-3 mt-0.5 font-mono">{record.jobId.slice(0, 16)}…</p>
+                </div>
+                <svg className="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+              </div>
+            ))}
           </div>
-        </div>
-        <div className="space-y-2">
-          {records.map((record) => (
-            <div key={record.jobId} className="rounded-lg border border-spice/15 bg-white/85 p-3 text-sm">
-              <p className="font-semibold text-ink">{record.documentName}</p>
-              <p className="text-xs text-ink/70">Job: {record.jobId}</p>
-            </div>
-          ))}
-          {records.length === 0 ? <p className="text-sm text-ink/70">No uploads in this session.</p> : null}
-        </div>
+        )}
       </div>
     </div>
   );

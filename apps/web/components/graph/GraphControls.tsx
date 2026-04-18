@@ -1,7 +1,5 @@
 "use client";
 
-import { useViewport } from "reactflow";
-
 import { useGraphStore } from "../../lib/stores/graphStore";
 
 type GraphControlsProps = {
@@ -21,21 +19,23 @@ export function GraphControls({
 }: GraphControlsProps) {
   const bridgeFocusMode = useGraphStore((state) => state.bridgeFocusMode);
   const toggleBridgeFocus = useGraphStore((state) => state.toggleBridgeFocus);
-  const viewport = useViewport();
-  const zoomLevel = viewport?.zoom ?? 1;
+  const isBridge = bridgeFocusMode || bridgeFocus;
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-4 rounded-xl border border-spice/20 bg-white/75 p-3">
+    <div className="flex items-center gap-3">
       <button
         type="button"
         onClick={onFit}
-        className="rounded-lg bg-pine px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white"
+        title="Fit graph to view"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-ink-2 transition hover:bg-white/10 hover:text-ink"
       >
-        Fit Graph
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+        </svg>
       </button>
 
-      <label className="flex min-w-[220px] flex-1 items-center gap-3 text-xs font-semibold uppercase tracking-wide text-spice">
-        Confidence {confidenceThreshold.toFixed(2)}
+      <label className="flex items-center gap-2 text-[11px] text-ink-2">
+        <span className="whitespace-nowrap">≥{(confidenceThreshold * 100).toFixed(0)}%</span>
         <input
           type="range"
           min={0}
@@ -43,30 +43,22 @@ export function GraphControls({
           step={0.05}
           value={confidenceThreshold}
           onChange={(event) => onChangeThreshold(Number(event.target.value))}
-          className="w-full"
+          className="w-24"
         />
       </label>
 
       <button
         type="button"
-        onClick={() => {
-          toggleBridgeFocus();
-          onToggleBridgeFocus();
-        }}
-        className={`rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
-          bridgeFocusMode || bridgeFocus
-            ? "bg-spice text-white"
-            : "border border-spice/25 bg-white text-spice"
+        onClick={() => { toggleBridgeFocus(); onToggleBridgeFocus(); }}
+        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${
+          isBridge
+            ? "bg-bridge/20 border border-bridge/30 text-orange-300"
+            : "border border-white/10 bg-white/5 text-ink-2 hover:bg-white/10"
         }`}
       >
-        {bridgeFocusMode || bridgeFocus ? "Bridge Focus On" : "Bridge Focus Off"}
+        <span className={`h-1.5 w-1.5 rounded-full ${isBridge ? "bg-bridge" : "bg-ink-3"}`} />
+        Bridges {isBridge ? "on" : "off"}
       </button>
-
-      <span className="rounded-md border border-spice/25 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-spice">
-        Zoom {zoomLevel.toFixed(2)}x
-      </span>
-
-      <p className="text-[11px] font-medium text-spice/80">Concept nodes visible at zoom &gt; 1.2x</p>
     </div>
   );
 }
