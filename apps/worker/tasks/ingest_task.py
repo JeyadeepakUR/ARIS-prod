@@ -66,13 +66,13 @@ async def _ingest_document_async(job_id: str, document_id: str) -> None:
             )
             ingest_format = document.file_format if not used_fallback_object else "text"
             ingested_document = ingestor.ingest(temp_path, ingest_format)
-            preview = ingested_document.content[:12000]
+            document.full_text = ingested_document.content
             document.status = "ready"
             document.metadata_json = {
                 **document.metadata_json,
                 **{k: v for k, v in ingested_document.metadata.items()},
                 "source": ingested_document.source,
-                "content_preview": preview,
+                "content_preview": ingested_document.content[:2000],
                 "content_length": len(ingested_document.content),
             }
             job.status = "ready"

@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     local_object_store_dir: str = ".aris_object_store"
     local_object_store_base_url: str = "http://127.0.0.1:8000"
 
+    # LLM provider settings
+    llm_provider: str = "mock"  # openai | anthropic | ollama | mock
+    llm_model: str = ""  # defaults per provider if empty
+    llm_api_key: str = ""
+    llm_base_url: str = ""  # for Ollama: http://localhost:11434
+
     jwt_private_key: str = ""
     jwt_public_key: str = ""
     jwt_algorithm: str = "RS256"

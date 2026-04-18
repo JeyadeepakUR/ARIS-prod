@@ -26,12 +26,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-[1500px] grid-cols-1 gap-4 px-3 py-4 lg:px-4 md:grid-cols-[200px_1fr]">
+    <div className="mx-auto grid min-h-screen w-full max-w-[1600px] grid-cols-1 gap-4 px-3 py-4 lg:px-5 md:grid-cols-[220px_1fr]">
       <Sidebar />
-      <section className="space-y-4">
+      <section className="flex min-h-0 flex-col gap-4">
         <Topbar />
-        <div className="glass-panel rounded-2xl p-5 md:p-7">{children}</div>
+        <div className="glass rounded-2xl p-5 md:p-7 flex-1">{children}</div>
       </section>
-    </main>
+    </div>
   );
 }

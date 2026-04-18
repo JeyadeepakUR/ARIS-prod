@@ -15,7 +15,14 @@ from aris.core.input_interface import InputError, InputInterface, InputPacket
 from aris.core.logging_config import setup_logging
 from aris.core.memory_store import FileBackedMemoryStore, InMemoryStore, MemoryStore, MemoryTrace
 from aris.core.reasoning_engine import ReasoningEngine, ReasoningResult
-from aris.core.semantic_analyzer import ClaimUnit, KeywordSignal, SemanticAnalyzer, SemanticProfile
+from aris.core.semantic_analyzer import (
+    CitationSignal,
+    ClaimUnit,
+    DocumentSection,
+    KeywordSignal,
+    SemanticAnalyzer,
+    SemanticProfile,
+)
 from aris.core.tool import EchoTool, Tool, ToolRegistry, WordCountTool
 from aris.core.trace_replay import ReplayEngine, ReplayFrame, TraceReplay
 from aris.core.run_loop import run_loop
@@ -28,6 +35,8 @@ __all__ = [
     "ReasoningResult",
     "KeywordSignal",
     "ClaimUnit",
+    "CitationSignal",
+    "DocumentSection",
     "SemanticProfile",
     "SemanticAnalyzer",
     "Evaluator",

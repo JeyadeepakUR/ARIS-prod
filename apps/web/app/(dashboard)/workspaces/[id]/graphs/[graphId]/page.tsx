@@ -68,64 +68,65 @@ export default function GraphCanvasPage() {
   );
 
   return (
-    <div className="md:-mx-2 xl:-mx-4">
-      <PageHeader
-        eyebrow="Graph Canvas"
-        title="Knowledge Graph View"
-        description="Click any edge to inspect its reasoning chain and confidence score."
-      />
-
-      <GraphControls
-        confidenceThreshold={confidenceThreshold}
-        onChangeThreshold={(value) => setConfidenceThreshold(value)}
-        onFit={() => setFitTick((value) => value + 1)}
-        bridgeFocus={bridgeFocus}
-        onToggleBridgeFocus={() => setBridgeFocus((value) => !value)}
-      />
-
-      {error ? <p className="mb-3 text-sm text-red-700">{error}</p> : null}
-      {loading ? <p className="mb-3 text-sm text-ink/70">Loading graph...</p> : null}
-
-      <ReactFlowProvider>
-        <GraphCanvas
-          key={fitTick}
-          nodes={nodes}
-          edges={edges}
-          confidenceThreshold={confidenceThreshold}
-          bridgeFocus={bridgeFocus}
-          onSelectEdge={(edgeId) => setSelectedEdgeId(edgeId)}
-        />
-      </ReactFlowProvider>
-
-      <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_auto]">
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-spice">Edge Evidence</p>
-          {selectedEdge ? (
-            <EdgeTooltip edge={selectedEdge} />
-          ) : (
-            <p className="rounded-xl border border-dashed border-spice/30 bg-white/70 p-4 text-sm text-ink/70">
-              Select an edge on the canvas to inspect full evidence.
-            </p>
+    <div>
+      {/* Breadcrumb + controls */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/workspaces/${workspaceId}/graphs`}
+            className="flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink transition"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Graphs
+          </Link>
+          <span className="text-ink-3">/</span>
+          <span className="text-xs font-mono text-ink-2">{graphId.slice(0,8)}…</span>
+          {loading && <span className="text-xs text-ink-3">Loading…</span>}
+          {!loading && (
+            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+              {nodes.length} nodes · {edges.length} edges
+            </span>
           )}
         </div>
 
-        <div className="flex flex-col gap-2">
-          {selectedEdge ? (
-            <Link
-              href={`/workspaces/${workspaceId}/graphs/${graphId}/edge/${selectedEdge.id}`}
-              className="rounded-lg bg-spice px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white"
-            >
-              Open Edge Page
-            </Link>
-          ) : null}
-          <Link
-            href={`/workspaces/${workspaceId}/graphs`}
-            className="rounded-lg border border-spice/25 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-spice"
-          >
-            Back to Graphs
-          </Link>
-        </div>
+        <GraphControls
+          confidenceThreshold={confidenceThreshold}
+          onChangeThreshold={(value) => setConfidenceThreshold(value)}
+          onFit={() => setFitTick((value) => value + 1)}
+          bridgeFocus={bridgeFocus}
+          onToggleBridgeFocus={() => setBridgeFocus((value) => !value)}
+        />
       </div>
+
+      {error ? (
+        <div className="mb-4 rounded-xl border border-danger/25 bg-danger/8 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      ) : null}
+
+      {/* Canvas — explicit height required by ReactFlow */}
+      <div className="overflow-hidden rounded-2xl border border-white/8" style={{ height: 620 }}>
+        <ReactFlowProvider>
+          <GraphCanvas
+            key={fitTick}
+            nodes={nodes}
+            edges={edges}
+            confidenceThreshold={confidenceThreshold}
+            bridgeFocus={bridgeFocus}
+            onSelectEdge={(edgeId) => setSelectedEdgeId(edgeId)}
+          />
+        </ReactFlowProvider>
+      </div>
+
+      {/* Edge evidence panel */}
+      {selectedEdge && (
+        <div className="mt-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-2">Edge Evidence</p>
+          <EdgeTooltip edge={selectedEdge} />
+        </div>
+      )}
     </div>
   );
 }

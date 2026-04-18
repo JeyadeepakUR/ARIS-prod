@@ -3,52 +3,123 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  --bg: #0a0b0f;
+  --bg-2: #111318;
+  --bg-3: #1a1d26;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.14);
+  --text: #e8eaf0;
+  --text-2: #8b8fa8;
+  --text-3: #555870;
+  --accent: #6366f1;
+  --accent-2: #818cf8;
+  --accent-glow: rgba(99,102,241,0.25);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --bridge: #f97316;
+  --bridge-glow: rgba(249,115,22,0.22);
+  color-scheme: dark;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
   min-height: 100%;
 }
 
 body {
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
-  color: #1f1d17;
-  background:
-    radial-gradient(1200px 700px at 5% -5%, #f7c77d 0%, transparent 45%),
-    radial-gradient(1000px 600px at 100% 0%, #f3d7b2 0%, transparent 48%),
-    linear-gradient(180deg, #faf7f0 0%, #efe5d5 100%);
+  font-family: "Space Grotesk", "Inter", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: inherit;
+a { color: inherit; text-decoration: none; }
+
+/* ── Glass cards ── */
+.glass {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.glass-panel {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  box-shadow: 0 10px 40px rgba(78, 54, 34, 0.12);
-  backdrop-filter: blur(6px);
+.glass-strong {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
-.pulse {
-  animation: pulse 1.4s ease-in-out infinite;
-}
+/* Keep old .glass-panel alias so nothing breaks */
+.glass-panel { @apply glass; }
 
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ── Animations ── */
 @keyframes pulse {
-  0% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.55;
-  }
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fade-up {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes bridge-dash {
+  to { stroke-dashoffset: -24; }
+}
+
+.pulse { animation: pulse 1.4s ease-in-out infinite; }
+.animate-slide-in { animation: slide-in-right 0.28s cubic-bezier(0.16,1,0.3,1) both; }
+.animate-fade-up { animation: fade-up 0.3s ease both; }
+
+/* ── ReactFlow dark overrides ── */
+.react-flow__background { background: #0d0e14 !important; }
+.react-flow__controls {
+  background: var(--bg-3) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text-2) !important;
+  fill: var(--text-2) !important;
+  width: 34px !important;
+  height: 34px !important;
+}
+.react-flow__controls-button:hover { background: rgba(255,255,255,0.06) !important; }
+.react-flow__controls-button:last-child { border-bottom: none !important; }
+.react-flow__minimap {
+  background: var(--bg-3) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+.react-flow__minimap-mask { fill: rgba(10,11,15,0.65) !important; }
+
+/* ── Inputs ── */
+input:focus { outline: none; }
+input[type="range"] { accent-color: var(--accent); }

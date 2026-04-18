@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +36,10 @@ async def get_workspace_or_403(
 async def list_hypotheses(
     workspace_id: UUID,
     graph_id: UUID,
+    hypothesis_status: str | None = Query(None, alias="status"),
+    min_confidence: float | None = Query(None, ge=0.0, le=1.0),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[HypothesisRead]:
@@ -43,11 +48,14 @@ async def list_hypotheses(
     if graph is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Graph not found")
 
-    rows = await session.scalars(
-        select(Hypothesis)
-        .where(Hypothesis.graph_id == graph.id)
-        .order_by(Hypothesis.confidence.desc(), Hypothesis.created_at.desc())
-    )
+    offset = (page - 1) * size
+    query = select(Hypothesis).where(Hypothesis.graph_id == graph.id)
+    if hypothesis_status:
+        query = query.where(Hypothesis.status == hypothesis_status)
+    if min_confidence is not None:
+        query = query.where(Hypothesis.confidence >= min_confidence)
+    query = query.order_by(Hypothesis.confidence.desc(), Hypothesis.created_at.desc()).offset(offset).limit(size)
+    rows = await session.scalars(query)
     return [
         HypothesisRead(
             id=hypothesis.id,

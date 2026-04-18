@@ -1,4 +1,4 @@
-"""Generate hypotheses from inter-domain bridge edges."""
+"""Generate hypotheses from inter-domain bridge edges using LLM synthesis."""
 
 from __future__ import annotations
 
@@ -14,19 +14,84 @@ from apps.api.models.edge import Edge
 from apps.api.models.hypothesis import Hypothesis
 from apps.api.models.node import Node
 from apps.worker.main import celery_app
+from aris.llm.provider import get_provider
 
 
-def _summarize_evidence(text: str, max_chars: int) -> str:
-    return " ".join(text.split())[:max_chars]
+_HYPOTHESIS_PROMPT = """\
+You are a research intelligence system generating falsifiable scientific hypotheses.
+
+A knowledge graph has identified a cross-domain bridge between two research areas.
+
+Source node: {source_label}
+Source domain: {source_domain}
+Target node: {target_label}
+Target domain: {target_domain}
+Bridge concept: {bridge_concept}
+Edge evidence: {evidence}
+
+Generate a specific, testable, falsifiable research hypothesis about this cross-domain connection.
+
+Return a JSON object with:
+- "statement": the primary hypothesis (1-2 sentences, specific and falsifiable)
+- "null_hypothesis": the null hypothesis to reject
+- "hypothesis_type": one of "causal", "correlational", "technology_transfer", "mechanistic"
+- "methodology_hint": brief suggested experimental approach (1 sentence)
+- "evidence_basis": what in the evidence supports this hypothesis
+
+Return only the JSON object."""
 
 
-def _generate_hypothesis_text(source: Node, target: Node, edge: Edge) -> str:
+def _generate_hypothesis_with_llm(
+    source: Node,
+    target: Node,
+    edge: Edge,
+    provider,
+) -> str:
     bridge = edge.bridge_concept or "cross-domain transfer mechanism"
-    evidence = _summarize_evidence(edge.evidence, 180)
+    evidence_snippet = " ".join(edge.evidence.split())[:350]
+
+    try:
+        prompt = _HYPOTHESIS_PROMPT.format(
+            source_label=source.label,
+            source_domain=source.cluster_id or "unknown domain",
+            target_label=target.label,
+            target_domain=target.cluster_id or "unknown domain",
+            bridge_concept=bridge,
+            evidence=evidence_snippet,
+        )
+        result = provider.complete_json(prompt, max_tokens=400)
+        statement = str(result.get("statement", "")).strip()
+        null_hyp = str(result.get("null_hypothesis", "")).strip()
+        hyp_type = str(result.get("hypothesis_type", "causal")).strip()
+        methodology = str(result.get("methodology_hint", "")).strip()
+        evidence_basis = str(result.get("evidence_basis", "")).strip()
+
+        if not statement:
+            return _generate_hypothesis_fallback(source, target, edge)
+
+        parts = [f"Hypothesis ({hyp_type}): {statement}"]
+        if null_hyp:
+            parts.append(f"Null hypothesis: {null_hyp}")
+        if methodology:
+            parts.append(f"Methodology: {methodology}")
+        if evidence_basis:
+            parts.append(f"Evidence basis: {evidence_basis}")
+        return "\n".join(parts)
+    except Exception:
+        return _generate_hypothesis_fallback(source, target, edge)
+
+
+def _generate_hypothesis_fallback(source: Node, target: Node, edge: Edge) -> str:
+    bridge = edge.bridge_concept or "cross-domain transfer mechanism"
+    evidence_snippet = " ".join(edge.evidence.split())[:200]
     return (
-        f"If {source.label} is optimized within {source.cluster_id or 'its source domain'}, "
-        f"then {target.label} in {target.cluster_id or 'the target domain'} shows measurable improvement, "
-        f"because {bridge} mediates the observed transfer pattern from evidence: {evidence}."
+        f"Hypothesis (technology_transfer): Applying {bridge} developed in "
+        f"{source.cluster_id or 'the source domain'} ({source.label}) to "
+        f"{target.cluster_id or 'the target domain'} ({target.label}) "
+        f"will yield measurable performance improvement on benchmark tasks.\n"
+        f"Null hypothesis: {bridge} from {source.cluster_id or 'source'} "
+        f"does not improve outcomes in {target.cluster_id or 'target'}.\n"
+        f"Evidence basis: {evidence_snippet}"
     )
 
 
@@ -51,6 +116,13 @@ async def _generate_hypotheses_async(graph_id: str) -> dict:
     if database.SessionLocal is None:
         msg = "Database session factory is not initialized"
         raise RuntimeError(msg)
+
+    provider = get_provider(
+        settings.llm_provider,
+        model=settings.llm_model,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+    )
 
     created_count = 0
     skipped_count = 0
@@ -87,7 +159,7 @@ async def _generate_hypotheses_async(graph_id: str) -> dict:
                 skipped_count += 1
                 continue
 
-            hypothesis_text = _generate_hypothesis_text(source, target, edge)
+            hypothesis_text = _generate_hypothesis_with_llm(source, target, edge, provider)
             session.add(
                 Hypothesis(
                     id=uuid4(),

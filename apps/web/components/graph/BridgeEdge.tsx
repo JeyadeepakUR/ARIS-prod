@@ -43,10 +43,9 @@ export function BridgeEdge(props: EdgeProps) {
 
   const lineStyle = {
     stroke: `url(#${gradientId})`,
-    strokeWidth: 3,
+    strokeWidth: 2.5,
     opacity: props.style?.opacity ?? 1,
-    strokeDasharray: bridgeFocusMode ? "8 4" : undefined,
-    animation: bridgeFocusMode ? "aris-bridge-dash 1s linear infinite" : undefined,
+    strokeDasharray: bridgeFocusMode ? "6 3" : undefined,
   } as const;
 
   return (
@@ -63,7 +62,7 @@ export function BridgeEdge(props: EdgeProps) {
       <EdgeLabelRenderer>
         <button
           type="button"
-          className="nodrag nopan rounded-md border border-slate-300 bg-white/90 px-2 py-1 text-[10px] text-slate-700 shadow"
+          className="nodrag nopan rounded-full border border-bridge/30 bg-bridge/15 px-2.5 py-0.5 text-[10px] font-semibold text-orange-300 shadow-lg backdrop-blur"
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
@@ -75,14 +74,6 @@ export function BridgeEdge(props: EdgeProps) {
           {String(props.data?.bridge_concept ?? "Bridge")}
         </button>
       </EdgeLabelRenderer>
-
-      <style jsx>{`
-        @keyframes aris-bridge-dash {
-          to {
-            stroke-dashoffset: -24;
-          }
-        }
-      `}</style>
     </>
   );
 }

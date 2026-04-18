@@ -59,6 +59,9 @@ apps/web/.next/
 apps/web/node_modules/
 *.tsbuildinfo
 
+# Un-ignore the web lib source (overrides global lib/ rule above)
+!apps/web/lib/
+
 experiments/
 data/
 

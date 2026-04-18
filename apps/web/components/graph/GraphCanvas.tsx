@@ -226,17 +226,11 @@ function buildFlowEdges(edges: GraphEdge[], nodes: GraphNode[], confidenceThresh
 }
 
 function minimapNodeColor(node: Node): string {
-  const nodeType = String(node.data?.nodeType ?? "");
-  if (nodeType === "domain") {
-    return "#0f766e";
-  }
-  if (nodeType === "bridge_concept") {
-    return "#b45309";
-  }
-  if (nodeType === "document") {
-    return "#9a3412";
-  }
-  return "#475569";
+  const nodeType = String(node.data?.nodeType ?? node.type ?? "");
+  if (nodeType === "domain") return "#6366f1";
+  if (nodeType === "bridge_concept") return "#f97316";
+  if (nodeType === "document") return "#818cf8";
+  return "#555870";
 }
 
 export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, onSelectEdge }: GraphCanvasProps) {
@@ -381,24 +375,24 @@ export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, on
   };
 
   return (
-    <div className="relative h-[760px] overflow-hidden rounded-2xl border border-spice/20 bg-gradient-to-b from-white to-sand/20">
+    <div style={{ width: "100%", height: "100%", background: "#0d0e14" }}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
         fitView
-        fitViewOptions={{ padding: 0.22 }}
-        minZoom={0.25}
-        maxZoom={1.6}
+        fitViewOptions={{ padding: 0.2 }}
+        minZoom={0.18}
+        maxZoom={2}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onEdgeClick={onEdgeClick}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#d9c8ae" gap={18} size={1.2} />
+        <Background color="rgba(255,255,255,0.04)" gap={24} size={1} />
         <MiniMap
           nodeColor={minimapNodeColor}
           nodeStrokeWidth={2}
-          maskColor="rgba(232, 220, 198, 0.42)"
+          maskColor="rgba(10,11,20,0.65)"
           position="bottom-right"
           zoomable
           pannable
