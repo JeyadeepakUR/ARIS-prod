@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +52,7 @@ def _queue_ingest_job(job_id: UUID, document_id: UUID, settings: Settings) -> tu
         return False, str(exc)
 
 
-@router.post("/upload-url", response_model=DocumentUploadInitResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload-url", response_model=DocumentUploadInitResponse, status_code=http_status.HTTP_201_CREATED)
 async def initialize_document_upload(
     workspace_id: UUID,
     payload: DocumentUploadInitRequest,
@@ -63,7 +64,7 @@ async def initialize_document_upload(
         select(Workspace).where(Workspace.id == workspace_id, Workspace.owner_id == current_user.id)
     )
     if workspace is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
     document_id = uuid4()
     storage = DocumentService(settings)
@@ -107,6 +108,9 @@ async def initialize_document_upload(
 @router.get("", response_model=list[DocumentRead])
 async def list_documents(
     workspace_id: UUID,
+    document_status: str | None = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[DocumentRead]:
@@ -114,9 +118,13 @@ async def list_documents(
         select(Workspace).where(Workspace.id == workspace_id, Workspace.owner_id == current_user.id)
     )
     if workspace is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
-    rows = await session.scalars(
-        select(Document).where(Document.workspace_id == workspace.id).order_by(Document.created_at.desc())
-    )
+    offset = (page - 1) * size
+    query = select(Document).where(Document.workspace_id == workspace.id)
+    if document_status:
+        query = query.where(Document.status == document_status)
+    query = query.order_by(Document.created_at.desc()).offset(offset).limit(size)
+
+    rows = await session.scalars(query)
     return [_document_read(document) for document in rows]

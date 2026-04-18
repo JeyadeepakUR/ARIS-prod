@@ -1,4 +1,4 @@
-"""Graph orchestration service for Sprint 3 pipeline."""
+"""Graph orchestration service for ARIS knowledge graph pipeline."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.config import get_settings
 from apps.api.models.document import Document
 from apps.api.models.edge import Edge as EdgeModel
 from apps.api.models.node import Node as NodeModel
@@ -23,6 +24,7 @@ from aris.graph.knowledge_graph import KnowledgeGraph
 from aris.graph.knowledge_graph import Linker, LinkMaterializer, Node
 from aris.graph.knowledge_graph import add_edges_to_graph, build_graph_from_corpus
 from aris.graph.research_planner import PlannerContext, ResearchAction, ResearchPlanner
+from aris.llm.provider import LLMProvider, get_provider
 
 
 @dataclass(frozen=True)
@@ -37,69 +39,59 @@ class GraphBuildArtifacts:
 class GraphService:
     """Build knowledge graph and draft plans from ingested workspace documents."""
 
+    # Seed keyword vocabulary for domain detection (supplemented by LLM when available)
     _DOMAIN_KEYWORDS: dict[str, set[str]] = {
         "machine_learning": {
-            "ml",
-            "ai",
-            "model",
-            "neural",
-            "learning",
-            "classification",
-            "prediction",
-            "inference",
-            "deep",
-            "transformer",
-            "embedding",
-            "training",
-            "dataset",
+            "ml", "ai", "model", "neural", "learning", "classification",
+            "prediction", "inference", "deep", "transformer", "embedding",
+            "training", "dataset", "attention", "fine-tuning", "pretraining",
         },
         "cybersecurity": {
-            "security",
-            "cyber",
-            "threat",
-            "attack",
-            "malware",
-            "anomaly",
-            "intrusion",
-            "encryption",
-            "privacy",
-            "forensics",
-            "audit",
-            "trust",
+            "security", "cyber", "threat", "attack", "malware", "anomaly",
+            "intrusion", "encryption", "privacy", "forensics", "audit", "trust",
+            "vulnerability", "exploit", "phishing", "authentication",
         },
         "blockchain": {
-            "blockchain",
-            "ledger",
-            "smart",
-            "contract",
-            "consensus",
-            "token",
-            "immutable",
-            "decentralized",
-            "proof",
+            "blockchain", "ledger", "smart", "contract", "consensus", "token",
+            "immutable", "decentralized", "proof", "cryptocurrency", "defi",
         },
         "healthcare": {
-            "cancer",
-            "clinical",
-            "diagnosis",
-            "patient",
-            "medical",
-            "biometric",
-            "depression",
-            "therapy",
-            "detection",
+            "cancer", "clinical", "diagnosis", "patient", "medical", "biometric",
+            "depression", "therapy", "detection", "drug", "genomics", "radiology",
+            "ehr", "epidemiology", "biomarker",
         },
         "computer_vision": {
-            "image",
-            "vision",
-            "video",
-            "spectrogram",
-            "detection",
-            "segmentation",
-            "recognition",
-            "captioning",
+            "image", "vision", "video", "spectrogram", "detection", "segmentation",
+            "recognition", "captioning", "object", "pixel", "convolution", "vit",
+        },
+        "natural_language_processing": {
+            "nlp", "text", "language", "sentiment", "parsing", "tokenization",
+            "summarization", "translation", "question", "answering", "dialogue",
+        },
+        "robotics": {
+            "robot", "autonomous", "navigation", "manipulation", "control",
+            "reinforcement", "planning", "sensor", "actuator", "localization",
+        },
+        "bioinformatics": {
+            "genome", "protein", "sequence", "alignment", "phylogenetic",
+            "rna", "dna", "gene", "expression", "mutation", "variant",
         },
     }
+
+    def __init__(self, provider: LLMProvider | None = None) -> None:
+        if provider is None:
+            settings = get_settings()
+            try:
+                provider = get_provider(
+                    settings.llm_provider,
+                    model=settings.llm_model,
+                    api_key=settings.llm_api_key,
+                    base_url=settings.llm_base_url,
+                )
+            except Exception:
+                from aris.llm.mock_provider import MockProvider
+                provider = MockProvider()
+        self._provider = provider
 
     _STOPWORDS: set[str] = {
         "the",
@@ -123,22 +115,6 @@ class GraphService:
         "under",
         "data",
         "method",
-    }
-
-    _LOW_VALUE_TERMS: set[str] = {
-        "learning",
-        "model",
-        "system",
-        "method",
-        "approach",
-        "result",
-        "performance",
-        "technique",
-        "application",
-        "using",
-        "based",
-        "analysis",
-        "framework",
     }
 
     def build_graph(
@@ -186,7 +162,7 @@ class GraphService:
             metadata_value=metadata_value,
         )
 
-        materializer = LinkMaterializer(ReasoningEngine(), Evaluator())
+        materializer = LinkMaterializer(ReasoningEngine(self._provider), Evaluator())
         edges, failures, rejections = materializer.materialize_batch(candidates, corpus)
         if not edges:
             edges = self._fallback_edges(core_documents)
@@ -300,23 +276,43 @@ class GraphService:
         await db.flush()
 
     def _classify_node_with_llm_fallback(self, label: str, source_title: str) -> dict[str, object]:
+        try:
+            prompt = (
+                "Classify this knowledge graph node for a research document.\n\n"
+                f"Node label: {label}\n"
+                f"Source document: {source_title}\n\n"
+                "Return a JSON object with:\n"
+                '- "tier": integer 1 (broad domain), 2 (sub-domain/technique), or 3 (specific concept/term)\n'
+                '- "cluster_id": short domain name string (e.g. "Machine Learning", "Cybersecurity")\n'
+                '- "low_value": boolean — true only for extremely generic terms like "method", "system"\n\n'
+                "Return only the JSON object."
+            )
+            result = self._provider.complete_json(prompt, max_tokens=120)
+            tier = int(result.get("tier", 3))
+            cluster = str(result.get("cluster_id", "") or "")
+            low_value = bool(result.get("low_value", False))
+            if tier not in {1, 2, 3}:
+                tier = 3
+            if not cluster:
+                cluster = self._derive_cluster(f"{label} {source_title}")
+            return {"tier": tier, "cluster_id": cluster, "low_value": low_value}
+        except Exception:
+            return self._classify_node_heuristic(label, source_title)
+
+    def _classify_node_heuristic(self, label: str, source_title: str) -> dict[str, object]:
         normalized_label = label.strip().lower()
-        normalized_source = source_title.strip().lower()
-
-        if normalized_label in self._LOW_VALUE_TERMS:
+        low_value_terms = {
+            "learning", "model", "system", "method", "approach", "result",
+            "performance", "technique", "application", "using", "based",
+            "analysis", "framework",
+        }
+        if normalized_label in low_value_terms:
             return {"tier": 3, "cluster_id": self._derive_cluster(source_title or label), "low_value": True}
-
         if any(token in normalized_label for token in ["domain", "field", "research area"]):
             return {"tier": 1, "cluster_id": self._derive_cluster(label), "low_value": False}
-
         if any(token in normalized_label for token in ["detection", "learning", "security", "contracts"]):
             return {"tier": 2, "cluster_id": self._derive_cluster(label), "low_value": False}
-
-        return {
-            "tier": 3,
-            "cluster_id": self._derive_cluster(f"{label} {normalized_source}"),
-            "low_value": False,
-        }
+        return {"tier": 3, "cluster_id": self._derive_cluster(f"{label} {source_title}"), "low_value": False}
 
     def _derive_cluster(self, text: str) -> str:
         lowered = text.lower()
@@ -333,13 +329,42 @@ class GraphService:
     ) -> str:
         source_cluster = source_node.cluster_id or "general"
         target_cluster = target_node.cluster_id or "general"
-        evidence_words = [token for token in re.findall(r"[a-z]{4,}", edge.evidence.lower()) if token not in self._STOPWORDS]
+        evidence_snippet = edge.evidence[:400] if edge.evidence else ""
+
+        try:
+            prompt = (
+                "You are identifying cross-domain bridge concepts in a research knowledge graph.\n\n"
+                f"Source domain cluster: {source_cluster}\n"
+                f"Source node: {source_node.label}\n"
+                f"Target domain cluster: {target_cluster}\n"
+                f"Target node: {target_node.label}\n"
+                f"Edge evidence: {evidence_snippet}\n\n"
+                "Identify the precise conceptual bridge that connects these two domains. "
+                "The bridge concept should be a specific mechanism, formalism, technique, or principle "
+                "that is genuinely shared between both domains and enables knowledge transfer.\n\n"
+                "Return a JSON object with:\n"
+                '- "bridge_concept": concise name (3-8 words) of the bridge concept\n'
+                '- "description": one sentence explaining the transfer mechanism\n\n'
+                "Return only the JSON object."
+            )
+            result = self._provider.complete_json(prompt, max_tokens=200)
+            bridge = str(result.get("bridge_concept", "")).strip()
+            if bridge:
+                return bridge
+        except Exception:
+            pass
+
+        # Heuristic fallback
+        evidence_words = [
+            token for token in re.findall(r"[a-z]{4,}", edge.evidence.lower())
+            if token not in self._STOPWORDS
+        ]
         keyword = evidence_words[0] if evidence_words else "integration"
-        return f"{source_cluster.lower()} {target_cluster.lower()} {keyword}".strip()
+        return f"{source_cluster} {target_cluster} {keyword}".strip()
 
     def _to_core_document(self, document: Document) -> CoreDocument:
         metadata = {k: str(v) for k, v in document.metadata_json.items()}
-        content = self._synthesize_content(document, metadata)
+        content = self._extract_content(document, metadata)
         return CoreDocument(
             content=content,
             source=document.filename,
@@ -349,15 +374,21 @@ class GraphService:
             created_at=datetime.now(UTC),
         )
 
-    def _synthesize_content(self, document: Document, metadata: dict[str, str]) -> str:
-        source = metadata.get("source", document.filename)
+    def _extract_content(self, document: Document, metadata: dict[str, str]) -> str:
+        """Return the best available document text for graph building."""
+        if document.full_text:
+            return document.full_text
+
+        # Fall back to preview stored in metadata (legacy documents)
         preview = metadata.get("content_preview", "")
-        preview_compact = re.sub(r"\s+", " ", preview).strip()
-        preview_compact = preview_compact[:1500]
+        if preview:
+            return re.sub(r"\s+", " ", preview).strip()
+
+        # Last resort: synthesize from document metadata
+        source = metadata.get("source", document.filename)
         return (
             f"Document {document.filename} format={document.file_format} "
-            f"workspace={document.workspace_id} source={source} "
-            f"content={preview_compact}"
+            f"workspace={document.workspace_id} source={source}"
         )
 
     def _generate_candidates(
@@ -422,6 +453,17 @@ class GraphService:
 
             tokens = self._tokenize(document.content)
             domain_to_concepts = self._extract_domain_concepts(tokens)
+
+            # Supplement with LLM-identified domains when keyword matching is insufficient
+            if len(domain_to_concepts) < 2:
+                llm_domains = self._extract_domains_with_llm(document.content)
+                for domain in llm_domains:
+                    if domain not in domain_to_concepts:
+                        domain_specific = [t for t in tokens if len(t) >= 4 and t not in self._STOPWORDS]
+                        top_concepts = [t for t, _ in Counter(domain_specific).most_common(6)]
+                        if top_concepts:
+                            domain_to_concepts[domain] = top_concepts
+
             if len(domain_to_concepts) < 2:
                 continue
 
@@ -586,12 +628,12 @@ class GraphService:
         global_concepts = [token for token, _ in token_counts.most_common(10)]
 
         domain_to_concepts: dict[str, list[str]] = {}
-        for domain, keywords in domain_scores.items():
+        for domain in domain_scores:
             domain_keywords = self._DOMAIN_KEYWORDS[domain]
             domain_specific = [token for token in token_counts if token in domain_keywords]
             shared_candidates = [token for token in global_concepts if token not in self._STOPWORDS]
 
-            merged = []
+            merged: list[str] = []
             for token in domain_specific + shared_candidates:
                 if token not in merged:
                     merged.append(token)
@@ -605,3 +647,22 @@ class GraphService:
             return {}
 
         return domain_to_concepts
+
+    def _extract_domains_with_llm(self, content_snippet: str) -> list[str]:
+        """Ask the LLM to identify research domains present in a document snippet."""
+        try:
+            prompt = (
+                "Identify the research domains present in the following document excerpt.\n\n"
+                f"Excerpt:\n{content_snippet[:1500]}\n\n"
+                "Return a JSON object with:\n"
+                '- "domains": list of 1-4 short domain name strings (e.g. ["machine learning", "cybersecurity"])\n'
+                '- "primary_domain": the most prominent domain\n\n'
+                "Return only the JSON object."
+            )
+            result = self._provider.complete_json(prompt, max_tokens=150)
+            domains = result.get("domains", [])
+            if isinstance(domains, list):
+                return [str(d).strip().lower().replace(" ", "_") for d in domains if d][:4]
+        except Exception:
+            pass
+        return []

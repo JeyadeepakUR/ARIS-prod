@@ -67,11 +67,13 @@ class HypothesisInductionEngine:
     """Generate descriptive hypothesis candidates from graph patterns.
 
     Detects predefined motifs:
-    - Gap: Nodes that could be connected but aren't
-    - Cluster: Groups of highly interconnected nodes
-    - Chain: Sequential node connections
-    - Hub: Nodes with many connections
+    - Gap: Nodes that share neighbors but aren't directly connected
+    - Cluster: Groups of highly interconnected nodes (triangles)
+    - Chain: Sequential directed node connections (A→B→C)
+    - Hub: Nodes with unusually high degree (potential integrators)
     - Contradiction: Conflicting edge types between same node pair
+    - Research gap: Nodes with high in-degree but low out-degree (knowledge sinks)
+    - Replication candidate: High-confidence positive-claim edges worth replicating
     """
 
     # Closed set of hypothesis types
@@ -81,6 +83,8 @@ class HypothesisInductionEngine:
         "chain",
         "hub",
         "contradiction",
+        "research_gap",
+        "replication_candidate",
     )
 
     def __init__(self, min_confidence: float = 0.5) -> None:
@@ -119,6 +123,8 @@ class HypothesisInductionEngine:
         candidates.extend(self._detect_chains(graph))
         candidates.extend(self._detect_hubs(graph))
         candidates.extend(self._detect_contradictions(graph))
+        candidates.extend(self._detect_research_gaps(graph))
+        candidates.extend(self._detect_replication_candidates(graph))
 
         # Verify graph was not modified
         assert len(graph.nodes) == node_count, "Graph nodes were modified"
@@ -369,34 +375,137 @@ class HypothesisInductionEngine:
             edge_groups[pair].append(edge)
 
         # Find pairs with multiple edge types
-        contradictory_types = {"supports", "contradicts"}  # Example opposition
+        contradictory_types = {"supports", "contradicts"}
+        # Broader opposition vocabulary
+        positive_types = {"supports", "agrees", "confirms", "replicates", "extends"}
+        negative_types = {"contradicts", "refutes", "disagrees", "challenges"}
 
         for pair, edges in edge_groups.items():
             if len(edges) < 2:
                 continue
 
-            edge_types = {e.edge_type for e in edges}
+            edge_types = {e.edge_type.lower() for e in edges}
+            has_positive = bool(edge_types & positive_types)
+            has_negative = bool(edge_types & negative_types)
+            has_classic_contradiction = contradictory_types.issubset(edge_types)
 
-            # Check for contradictory types
-            if contradictory_types.issubset(edge_types):
+            if has_classic_contradiction or (has_positive and has_negative):
                 node_a, node_b = pair
                 label_a = next((n.label for n in graph.nodes if n.node_id == node_a), "?")
                 label_b = next((n.label for n in graph.nodes if n.node_id == node_b), "?")
+
+                # Strong contradictions (explicit supports+contradicts pair) are definitive
+                confidence = 1.0 if has_classic_contradiction else min(
+                    0.95, sum(e.confidence for e in edges) / len(edges) + 0.1
+                )
 
                 candidates.append(
                     HypothesisCandidate(
                         hypothesis_id=uuid.uuid4(),
                         hypothesis_type="contradiction",
-                        description=f"Contradictory relationships between '{label_a}' and '{label_b}': {', '.join(edge_types)}",
+                        description=(
+                            f"Contradictory relationships detected between '{label_a}' and '{label_b}': "
+                            f"{', '.join(sorted(edge_types))}. "
+                            f"Reconciliation requires primary source adjudication."
+                        ),
                         supporting_nodes=(node_a, node_b),
                         supporting_edges=tuple(e.edge_id for e in edges),
-                        confidence=1.0,  # Contradiction is definitive
+                        confidence=confidence,
                         metadata={
                             "edge_types": sorted(list(edge_types)),
                             "edge_count": len(edges),
+                            "contradiction_strength": "strong" if has_classic_contradiction else "moderate",
                         },
                         created_at=datetime.now(UTC),
                     )
                 )
+
+        return candidates
+
+    def _detect_research_gaps(self, graph: KnowledgeGraph) -> list[HypothesisCandidate]:
+        """Detect nodes that receive many links but produce few (knowledge sinks)."""
+        candidates: list[HypothesisCandidate] = []
+
+        if len(graph.nodes) < 3 or len(graph.edges) < 2:
+            return candidates
+
+        in_degree: dict[uuid.UUID, int] = {n.node_id: 0 for n in graph.nodes}
+        out_degree: dict[uuid.UUID, int] = {n.node_id: 0 for n in graph.nodes}
+        in_edges: dict[uuid.UUID, list[uuid.UUID]] = {n.node_id: [] for n in graph.nodes}
+
+        for edge in graph.edges:
+            out_degree[edge.source_id] = out_degree.get(edge.source_id, 0) + 1
+            in_degree[edge.target_id] = in_degree.get(edge.target_id, 0) + 1
+            in_edges.setdefault(edge.target_id, []).append(edge.edge_id)
+
+        for node in graph.nodes:
+            nid = node.node_id
+            ind = in_degree.get(nid, 0)
+            outd = out_degree.get(nid, 0)
+
+            # Knowledge sink: well-referenced but produces no outbound links
+            if ind >= 2 and outd == 0:
+                confidence = min(1.0, 0.5 + 0.1 * ind)
+                candidates.append(
+                    HypothesisCandidate(
+                        hypothesis_id=uuid.uuid4(),
+                        hypothesis_type="research_gap",
+                        description=(
+                            f"Node '{node.label}' receives {ind} incoming links but has no outgoing connections. "
+                            f"This knowledge sink may represent an under-explored area where further research "
+                            f"could generate new links and advance the field."
+                        ),
+                        supporting_nodes=(nid,),
+                        supporting_edges=tuple(in_edges.get(nid, [])),
+                        confidence=confidence,
+                        metadata={
+                            "in_degree": ind,
+                            "out_degree": outd,
+                            "gap_type": "knowledge_sink",
+                        },
+                        created_at=datetime.now(UTC),
+                    )
+                )
+
+        return candidates
+
+    def _detect_replication_candidates(self, graph: KnowledgeGraph) -> list[HypothesisCandidate]:
+        """Detect high-confidence positive edges that are good replication candidates."""
+        candidates: list[HypothesisCandidate] = []
+
+        high_confidence_threshold = 0.85
+        positive_edge_types = {"supports", "confirms", "replicates", "extends", "demonstrates"}
+
+        replication_edges = [
+            e for e in graph.edges
+            if e.confidence >= high_confidence_threshold
+            and e.edge_type.lower() in positive_edge_types
+            and len(e.evidence.strip()) >= 60
+        ]
+
+        for edge in replication_edges:
+            source_label = next((n.label for n in graph.nodes if n.node_id == edge.source_id), "?")
+            target_label = next((n.label for n in graph.nodes if n.node_id == edge.target_id), "?")
+
+            candidates.append(
+                HypothesisCandidate(
+                    hypothesis_id=uuid.uuid4(),
+                    hypothesis_type="replication_candidate",
+                    description=(
+                        f"High-confidence '{edge.edge_type}' relationship between '{source_label}' "
+                        f"and '{target_label}' (confidence={edge.confidence:.2f}) is a strong replication "
+                        f"candidate. Independent validation would strengthen this finding."
+                    ),
+                    supporting_nodes=(edge.source_id, edge.target_id),
+                    supporting_edges=(edge.edge_id,),
+                    confidence=edge.confidence,
+                    metadata={
+                        "edge_type": edge.edge_type,
+                        "evidence_length": len(edge.evidence),
+                        "replication_priority": "high" if edge.confidence >= 0.92 else "medium",
+                    },
+                    created_at=datetime.now(UTC),
+                )
+            )
 
         return candidates

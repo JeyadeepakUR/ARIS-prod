@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +22,10 @@ router = APIRouter(prefix="/graphs/{graph_id}/nodes", tags=["nodes"])
 @router.get("", response_model=list[NodeRead])
 async def list_nodes(
     graph_id: UUID,
+    node_type: str | None = Query(None),
+    cluster_id: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[NodeRead]:
@@ -34,7 +39,14 @@ async def list_nodes(
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    rows = await session.scalars(select(Node).where(Node.graph_id == graph.id).order_by(Node.created_at.asc()))
+    offset = (page - 1) * size
+    query = select(Node).where(Node.graph_id == graph.id)
+    if node_type:
+        query = query.where(Node.node_type == node_type)
+    if cluster_id:
+        query = query.where(Node.cluster_id == cluster_id)
+    query = query.order_by(Node.created_at.asc()).offset(offset).limit(size)
+    rows = await session.scalars(query)
     return [
         NodeRead(
             id=node.id,

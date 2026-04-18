@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +22,11 @@ router = APIRouter(prefix="/graphs/{graph_id}/edges", tags=["edges"])
 @router.get("", response_model=list[EdgeRead])
 async def list_edges(
     graph_id: UUID,
+    edge_type: str | None = Query(None),
+    edge_category: str | None = Query(None),
+    min_confidence: float | None = Query(None, ge=0.0, le=1.0),
+    page: int = Query(1, ge=1),
+    size: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[EdgeRead]:
@@ -34,7 +40,17 @@ async def list_edges(
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    rows = await session.scalars(select(Edge).where(Edge.graph_id == graph.id).order_by(Edge.created_at.asc()))
+    offset = (page - 1) * size
+    from sqlalchemy import Float
+    query = select(Edge).where(Edge.graph_id == graph.id)
+    if edge_type:
+        query = query.where(Edge.edge_type == edge_type)
+    if edge_category:
+        query = query.where(Edge.edge_category == edge_category)
+    if min_confidence is not None:
+        query = query.where(Edge.confidence >= min_confidence)
+    query = query.order_by(Edge.confidence.desc(), Edge.created_at.asc()).offset(offset).limit(size)
+    rows = await session.scalars(query)
     return [
         EdgeRead(
             id=edge.id,

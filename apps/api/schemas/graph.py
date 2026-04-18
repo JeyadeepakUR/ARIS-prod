@@ -37,3 +37,16 @@ class GraphBuildResponse(BaseModel):
     job_id: UUID
     status: str
     queued: bool
+
+
+class GraphSummary(BaseModel):
+    """Aggregated statistics for a single graph."""
+
+    id: UUID
+    workspace_id: UUID
+    status: str
+    node_count: int
+    edge_count: int
+    bridge_edge_count: int
+    hypothesis_count: int
+    created_at: datetime
