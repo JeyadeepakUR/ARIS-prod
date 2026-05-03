@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# ── Install Python deps in a cacheable layer ──────────────────────────────────
+COPY pyproject.toml ./
+RUN mkdir -p aris apps && touch aris/__init__.py apps/__init__.py && \
+    pip install --no-cache-dir -e ".[api,agents,llm,ingestion]"
+
+# ── Pre-download fastembed ONNX model so first embedding is instant ───────────
+RUN python -c "from fastembed import TextEmbedding; list(TextEmbedding('nomic-ai/nomic-embed-text-v1.5').embed(['warmup']))"
+
+# ── Copy application source ───────────────────────────────────────────────────
+COPY . .
+
+CMD ["python", "-m", "apps.worker.main"]

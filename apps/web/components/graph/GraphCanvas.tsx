@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -12,21 +12,28 @@ import ReactFlow, {
 } from "reactflow";
 
 import type { GraphEdge, GraphNode } from "../../lib/api/graphs";
-import type { ARISEdge, ARISNode } from "../../lib/graph/layout";
-import { computeGraphLayout } from "../../lib/graph/layout";
+import type { ARISEdge, ARISNode, ViewMode } from "../../lib/graph/layout";
+import { colorForDomain, computeGraphLayout } from "../../lib/graph/layout";
+import { GraphLegend } from "./GraphLegend";
 import { useGraphStore } from "../../lib/stores/graphStore";
 import { BridgeMarkerNode } from "./BridgeMarkerNode";
 import { BridgeEdge } from "./BridgeEdge";
 import { ConceptNode } from "./ConceptNode";
+import { DocumentNode } from "./DocumentNode";
 import { DomainNode } from "./DomainNode";
+import { EdgeInspector } from "./EdgeInspector";
 import { HypothesisPanel } from "./HypothesisPanel";
 import { IntraDomainEdge } from "./IntraDomainEdge";
 import { NodeCard } from "./NodeCard";
+import { NodeInspector } from "./NodeInspector";
 import { SubDomainNode } from "./SubDomainNode";
 
 const nodeTypes: NodeTypes = {
-  nodeCard: ({ data }) => <NodeCard label={String(data.label)} nodeType={String(data.nodeType)} />,
+  nodeCard: ({ data }) => (
+    <NodeCard label={String(data.label)} nodeType={String(data.nodeType)} />
+  ),
   domain: DomainNode,
+  document: DocumentNode,
   subdomain: SubDomainNode,
   concept: ConceptNode,
   bridge_marker: BridgeMarkerNode,
@@ -35,229 +42,73 @@ const nodeTypes: NodeTypes = {
 const edgeTypes = {
   intra_domain: IntraDomainEdge,
   bridge: BridgeEdge,
+  has_concept: IntraDomainEdge,
+  extracted_from: IntraDomainEdge,
 };
 
 type GraphCanvasProps = {
+  graphId: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
   confidenceThreshold: number;
   bridgeFocus: boolean;
+  viewMode: ViewMode;
   onSelectEdge: (edgeId: string) => void;
 };
 
-function buildFlowNodes(nodes: GraphNode[], edges: GraphEdge[]): Node[] {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-
-  const domainToConcepts = new Map<string, string[]>();
-  const domainToDocuments = new Map<string, string[]>();
-  const bridgeToDomains = new Map<string, string[]>();
-
-  function add(map: Map<string, string[]>, key: string, value: string) {
-    const current = map.get(key) ?? [];
-    if (!current.includes(value)) {
-      current.push(value);
-      map.set(key, current);
-    }
-  }
-
-  for (const edge of edges) {
-    const source = nodeById.get(edge.source_node_id);
-    const target = nodeById.get(edge.target_node_id);
-    if (!source || !target) {
-      continue;
-    }
-
-    if (edge.edge_type === "has_concept" && source.node_type === "domain") {
-      add(domainToConcepts, source.id, target.id);
-      continue;
-    }
-
-    if (edge.edge_type === "belongs_to_domain") {
-      if (source.node_type === "document" && target.node_type === "domain") {
-        add(domainToDocuments, target.id, source.id);
-      } else if (source.node_type === "domain" && target.node_type === "document") {
-        add(domainToDocuments, source.id, target.id);
-      }
-      continue;
-    }
-
-    if (edge.edge_type === "cross_domain_bridge") {
-      if (source.node_type === "domain" && target.node_type === "bridge_concept") {
-        add(bridgeToDomains, target.id, source.id);
-      } else if (source.node_type === "bridge_concept" && target.node_type === "domain") {
-        add(bridgeToDomains, source.id, target.id);
-      }
-    }
-  }
-
-  const priority: Record<string, number> = {
-    document: 0,
-    domain: 1,
-    bridge_concept: 2,
-    concept: 3,
-  };
-
-  const sorted = [...nodes].sort((a, b) => {
-    const typeDiff = (priority[a.node_type] ?? 99) - (priority[b.node_type] ?? 99);
-    if (typeDiff !== 0) {
-      return typeDiff;
-    }
-    return a.label.localeCompare(b.label);
-  });
-
-  const yByDomain = new Map<string, number>();
-  const positionByNodeId = new Map<string, { x: number; y: number }>();
-
-  const domainNodes = sorted.filter((node) => node.node_type === "domain");
-  const documentNodes = sorted.filter((node) => node.node_type === "document");
-  const bridgeNodes = sorted.filter((node) => node.node_type === "bridge_concept");
-
-  let yCursor = 80;
-  for (const domain of domainNodes) {
-    const conceptsCount = (domainToConcepts.get(domain.id) ?? []).length;
-    const docsCount = (domainToDocuments.get(domain.id) ?? []).length;
-    const blockHeight = Math.max(260, Math.max(conceptsCount * 84, docsCount * 96));
-    const yCenter = yCursor + blockHeight / 2;
-
-    yByDomain.set(domain.id, yCenter);
-    positionByNodeId.set(domain.id, { x: 520, y: yCenter });
-
-    const domainDocs = (domainToDocuments.get(domain.id) ?? [])
-      .map((id) => nodeById.get(id))
-      .filter((node): node is GraphNode => Boolean(node))
-      .sort((a, b) => a.label.localeCompare(b.label));
-    domainDocs.forEach((doc, index) => {
-      positionByNodeId.set(doc.id, { x: 120, y: yCenter - (domainDocs.length - 1) * 48 + index * 96 });
-    });
-
-    const domainConcepts = (domainToConcepts.get(domain.id) ?? [])
-      .map((id) => nodeById.get(id))
-      .filter((node): node is GraphNode => Boolean(node))
-      .filter((node) => node.node_type === "concept")
-      .sort((a, b) => a.label.localeCompare(b.label));
-    domainConcepts.forEach((concept, index) => {
-      positionByNodeId.set(concept.id, {
-        x: 980 + (index % 2) * 290,
-        y: yCursor + Math.floor(index / 2) * 84,
-      });
-    });
-
-    yCursor += blockHeight + 90;
-  }
-
-  const bridgeYSlots = new Map<number, number>();
-  for (const bridge of bridgeNodes) {
-    const relatedDomains = (bridgeToDomains.get(bridge.id) ?? [])
-      .map((id) => yByDomain.get(id))
-      .filter((value): value is number => typeof value === "number");
-    const baseY = relatedDomains.length > 0
-      ? relatedDomains.reduce((sum, value) => sum + value, 0) / relatedDomains.length
-      : 120;
-    const slot = Math.round(baseY / 70);
-    const stack = bridgeYSlots.get(slot) ?? 0;
-    bridgeYSlots.set(slot, stack + 1);
-    positionByNodeId.set(bridge.id, {
-      x: 740,
-      y: slot * 70 + stack * 22,
-    });
-  }
-
-  let fallbackRow = 0;
-
-  return sorted.map((node) => {
-    const fixed = positionByNodeId.get(node.id);
-    let x = fixed?.x;
-    let y = fixed?.y;
-
-    if (typeof x !== "number" || typeof y !== "number") {
-      x = node.node_type === "document" ? 120 : node.node_type === "domain" ? 520 : 1260;
-      y = 80 + fallbackRow * 86;
-      fallbackRow += 1;
-    }
-
-    return {
-      id: node.id,
-      type: "nodeCard",
-      position: { x, y },
-      data: {
-        label: node.label,
-        nodeType: node.node_type,
-      },
-    };
-  });
-}
-
-function buildFlowEdges(edges: GraphEdge[], nodes: GraphNode[], confidenceThreshold: number): Edge[] {
-  const nodeIdSet = new Set(nodes.map((node) => node.id));
-  const documentToNode = new Map(
-    nodes
-      .filter((node) => Boolean(node.document_id))
-      .map((node) => [String(node.document_id), node.id]),
-  );
-
-  function resolveNodeId(candidate: string): string {
-    if (nodeIdSet.has(candidate)) {
-      return candidate;
-    }
-    return documentToNode.get(candidate) ?? candidate;
-  }
-
-  return edges
-    .filter((edge) => edge.confidence >= confidenceThreshold)
-    .map((edge) => {
-      const isBridge = edge.edge_type === "cross_domain_bridge";
-      const isConcept = edge.edge_type === "has_concept";
-      const stroke = isBridge ? "#b45309" : "#8f4f2b";
-      return {
-        id: edge.id,
-        source: resolveNodeId(edge.source_node_id),
-        target: resolveNodeId(edge.target_node_id),
-        label: isBridge ? `${edge.edge_type} (${(edge.confidence * 100).toFixed(0)}%)` : undefined,
-        labelStyle: { fontSize: 10, fill: "#92400e", fontWeight: 700 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
-        style: {
-          strokeWidth: isBridge ? 2.8 : isConcept ? 1.1 : 1.8,
-          stroke,
-          opacity: isBridge ? 0.98 : isConcept ? 0.38 : 0.62,
-        },
-        type: "smoothstep",
-      };
-    });
-}
-
-function minimapNodeColor(node: Node): string {
-  const nodeType = String(node.data?.nodeType ?? node.type ?? "");
-  if (nodeType === "domain") return "#6366f1";
-  if (nodeType === "bridge_concept") return "#f97316";
-  if (nodeType === "document") return "#818cf8";
-  return "#555870";
-}
-
-export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, onSelectEdge }: GraphCanvasProps) {
+export function GraphCanvas({
+  graphId,
+  nodes,
+  edges,
+  confidenceThreshold,
+  bridgeFocus,
+  viewMode,
+  onSelectEdge,
+}: GraphCanvasProps) {
   const activeBridgeEdgeId = useGraphStore((state) => state.activeBridgeEdgeId);
   const setActiveBridge = useGraphStore((state) => state.setActiveBridge);
   const getEdgeOpacity = useGraphStore((state) => state.getEdgeOpacity);
   const getNodeOpacity = useGraphStore((state) => state.getNodeOpacity);
 
-  const filteredEdges = useMemo(
-    () =>
-      edges.filter((edge) => {
-        const passesConfidence = edge.confidence >= confidenceThreshold;
-        if (!passesConfidence) {
-          return false;
-        }
-        if (!bridgeFocus) {
-          return true;
-        }
-        return edge.edge_type === "cross_domain_bridge" || edge.edge_type === "belongs_to_domain";
-      }),
-    [edges, confidenceThreshold, bridgeFocus],
-  );
+  const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null);
+  const [inspectedEdgeId, setInspectedEdgeId] = useState<string | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+
+  // Concept counts per domain hub (used for badges on DomainNode).
+  const conceptCountByDomain = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of edges) {
+      if (e.edge_type === "has_concept") {
+        counts.set(e.source_node_id, (counts.get(e.source_node_id) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [edges]);
+
+  // We keep all edges in the layout (just dimming weak ones) so the user can
+  // see "there's more here" instead of edges silently disappearing.
+  const filteredEdges = useMemo(() => {
+    if (viewMode === "bridges-only") {
+      return edges.filter(
+        (edge) =>
+          edge.edge_type === "cross_domain_bridge" ||
+          edge.edge_type === "has_concept" ||
+          edge.edge_type === "extracted_from",
+      );
+    }
+    if (bridgeFocus) {
+      return edges.filter((edge) => {
+        if (edge.edge_type === "has_concept" || edge.edge_type === "extracted_from") return true;
+        return (
+          edge.edge_type === "cross_domain_bridge" || edge.edge_type === "belongs_to_domain"
+        );
+      });
+    }
+    return edges;
+  }, [edges, bridgeFocus, viewMode]);
 
   const visibleNodes = useMemo(() => {
-    if (filteredEdges.length === 0) {
-      return nodes;
-    }
+    if (filteredEdges.length === 0) return nodes;
 
     const endpointIds = new Set<string>();
     filteredEdges.forEach((edge) => {
@@ -265,7 +116,13 @@ export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, on
       endpointIds.add(edge.target_node_id);
     });
 
-    return nodes.filter((node) => endpointIds.has(node.id) || (node.document_id ? endpointIds.has(node.document_id) : false));
+    return nodes.filter(
+      (node) =>
+        endpointIds.has(node.id) ||
+        node.node_type === "domain" ||
+        node.node_type === "document" ||
+        (node.document_id ? endpointIds.has(node.document_id) : false),
+    );
   }, [nodes, filteredEdges]);
 
   const arisNodes = useMemo<ARISNode[]>(
@@ -273,7 +130,7 @@ export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, on
       visibleNodes.map((node) => ({
         id: node.id,
         position: { x: 0, y: 0 },
-        type: "concept",
+        type: node.node_type,
         data: {
           label: node.label,
           tier: node.tier,
@@ -294,103 +151,213 @@ export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, on
         target: edge.target_node_id,
         data: {
           edge_category: edge.edge_category,
+          edge_type: edge.edge_type,
           confidence: edge.confidence,
           bridge_concept: edge.bridge_concept ?? undefined,
-          evidence: typeof edge.evidence?.text === "string" ? edge.evidence.text : JSON.stringify(edge.evidence),
+          evidence:
+            typeof edge.evidence?.text === "string"
+              ? edge.evidence.text
+              : JSON.stringify(edge.evidence),
         },
       })),
     [filteredEdges],
   );
 
   const positionedNodes = useMemo(
-    () => computeGraphLayout(arisNodes, arisEdges),
-    [arisNodes, arisEdges],
+    () => computeGraphLayout(arisNodes, arisEdges, viewMode),
+    [arisNodes, arisEdges, viewMode],
   );
 
+  // ── Hover affordances ──────────────────────────────────────────────────
+  // When the user hovers a node, we compute the set of "related" node IDs:
+  //   - the node itself
+  //   - everything connected by any direct edge
+  //   - if the hovered node is a domain hub, all its concepts
+  //   - if the hovered node is a document hub, all concepts extracted from it
+  const relatedToHover = useMemo<Set<string> | null>(() => {
+    if (!hoveredNodeId) return null;
+    const set = new Set<string>([hoveredNodeId]);
+    for (const e of edges) {
+      if (e.source_node_id === hoveredNodeId) set.add(e.target_node_id);
+      if (e.target_node_id === hoveredNodeId) set.add(e.source_node_id);
+    }
+    return set;
+  }, [hoveredNodeId, edges]);
+
+  const dimEdge = (edge: ARISEdge): boolean => {
+    if (!relatedToHover) return false;
+    return !(relatedToHover.has(edge.source) && relatedToHover.has(edge.target));
+  };
+  const dimNode = (id: string): boolean => {
+    if (!relatedToHover) return false;
+    return !relatedToHover.has(id);
+  };
+
   const flowNodes = useMemo<Node[]>(() => {
-    const mapped = positionedNodes.map((node) => {
-      const nodeType = node.data.tier === 1 ? "domain" : node.data.tier === 2 ? "subdomain" : "concept";
+    return positionedNodes.map((node) => {
+      const nodeType = node.data.node_type === "domain"
+        ? "domain"
+        : node.data.node_type === "document"
+        ? "document"
+        : node.data.node_type === "bridge_concept"
+        ? "concept"
+        : "concept";
+
+      const extra =
+        node.data.node_type === "domain"
+          ? { concept_count: conceptCountByDomain.get(node.id) ?? 0 }
+          : {};
+
+      const baseOpacity = getNodeOpacity(node);
+      const opacity = dimNode(node.id) ? Math.min(baseOpacity, 0.25) : baseOpacity;
+
       return {
         id: node.id,
         type: nodeType,
         position: node.position,
-        data: node.data,
-        style: {
-          opacity: getNodeOpacity(node),
-        },
+        data: { ...node.data, ...extra },
+        style: { opacity, transition: "opacity 0.18s ease" },
       } as Node;
     });
-
-    const positionByNode = new Map(mapped.map((node) => [node.id, node.position]));
-    const bridgeMarkers: Node[] = arisEdges
-      .filter((edge) => edge.data?.edge_category === "INTER_DOMAIN_BRIDGE")
-      .map((edge) => {
-        const sourcePos = positionByNode.get(edge.source);
-        const targetPos = positionByNode.get(edge.target);
-        const x = sourcePos && targetPos ? (sourcePos.x + targetPos.x) / 2 : 0;
-        const y = sourcePos && targetPos ? (sourcePos.y + targetPos.y) / 2 : 0;
-        return {
-          id: `bridge-marker-${edge.id}`,
-          type: "bridge_marker",
-          position: { x, y },
-          data: {
-            edge_id: edge.id,
-            bridge_concept: edge.data?.bridge_concept ?? "Bridge",
-          },
-          draggable: false,
-          selectable: false,
-        };
-      });
-
-    return [...mapped, ...bridgeMarkers];
-  }, [arisEdges, getNodeOpacity, positionedNodes]);
+    // dimNode is computed from hoveredNodeId/edges; depend on those.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positionedNodes, conceptCountByDomain, getNodeOpacity, hoveredNodeId, edges]);
 
   const flowEdges = useMemo<Edge[]>(() => {
     const nodeById = new Map(positionedNodes.map((node) => [node.id, node]));
     return arisEdges.map((edge) => {
       const sourceNode = nodeById.get(edge.source);
       const targetNode = nodeById.get(edge.target);
-      const edgeType = edge.data?.edge_category === "INTER_DOMAIN_BRIDGE" ? "bridge" : "intra_domain";
+      const isBridge = edge.data?.edge_category === "INTER_DOMAIN_BRIDGE";
+      const isHasConcept = edge.data?.edge_type === "has_concept";
+      const isExtractedFrom = edge.data?.edge_type === "extracted_from";
+
+      let edgeType = "intra_domain";
+      if (isBridge) edgeType = "bridge";
+
+      const sourceCluster = sourceNode?.data.cluster_id ?? "General Research";
+      const sourceColor = colorForDomain(sourceCluster);
+
+      let stroke = "rgba(255,255,255,0.10)";
+      let strokeWidth = 1;
+      let strokeDasharray: string | undefined;
+      if (isHasConcept) {
+        stroke = `${sourceColor}88`;
+        strokeWidth = 1.4;
+      } else if (isExtractedFrom) {
+        stroke = "rgba(148,163,184,0.35)";
+        strokeWidth = 0.9;
+        strokeDasharray = "3 3";
+      }
+
+      const confidence = edge.data?.confidence ?? 1;
+      const isStructural = isHasConcept || isExtractedFrom;
+      // Confidence-based dimming, but never make weak edges invisible — leave
+      // a faint trace so the user knows there's more to explore.
+      const confidenceMultiplier = isStructural
+        ? 1
+        : confidence >= confidenceThreshold
+        ? 1
+        : 0.18;
+      const baseOpacity = getEdgeOpacity(edge) * confidenceMultiplier;
+      const opacity = dimEdge(edge) ? Math.min(baseOpacity, 0.08) : baseOpacity;
+
       return {
         id: edge.id,
         source: edge.source,
         target: edge.target,
         type: edgeType,
-        markerEnd: { type: MarkerType.ArrowClosed },
+        markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
         data: {
           ...edge.data,
           source_cluster_id: sourceNode?.data.cluster_id,
           target_cluster_id: targetNode?.data.cluster_id,
         },
         style: {
-          opacity: getEdgeOpacity(edge),
+          opacity,
+          transition: "opacity 0.18s ease",
+          ...(isStructural ? { stroke, strokeWidth, strokeDasharray } : {}),
         },
       } as Edge;
     });
-  }, [arisEdges, getEdgeOpacity, positionedNodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arisEdges, getEdgeOpacity, positionedNodes, hoveredNodeId, edges, confidenceThreshold]);
 
   const onEdgeClick = (_: React.MouseEvent, edge: Edge) => {
     onSelectEdge(edge.id);
-    setActiveBridge(edge.id);
+    // Open the edge inspector for any meaningful relationship; structural
+    // hierarchy edges (has_concept / extracted_from) carry no extra evidence.
+    const isInspectable =
+      edge.data?.edge_type === "cross_domain_bridge" ||
+      edge.data?.edge_category === "INTER_DOMAIN_BRIDGE";
+    if (isInspectable) {
+      setInspectedEdgeId(edge.id);
+      setInspectedNodeId(null);
+      // Suppress the legacy hypothesis side-panel; the EdgeInspector replaces it.
+      setActiveBridge(null);
+    } else {
+      setActiveBridge(null);
+    }
   };
 
+  const onNodeClick = (_: React.MouseEvent, n: Node) => {
+    setInspectedNodeId(n.id);
+    setInspectedEdgeId(null);
+    // Clear any lingering bridge selection so the hypothesis panel doesn't
+    // stack behind the node inspector.
+    setActiveBridge(null);
+  };
+
+  const onPaneClick = () => {
+    setInspectedNodeId(null);
+    setInspectedEdgeId(null);
+    setActiveBridge(null);
+  };
+
+  const inspectedNode = inspectedNodeId
+    ? nodes.find((n) => n.id === inspectedNodeId) ?? null
+    : null;
+  const inspectedEdge = inspectedEdgeId
+    ? edges.find((e) => e.id === inspectedEdgeId) ?? null
+    : null;
+
+  const onNodeMouseEnter = (_: React.MouseEvent, n: Node) => setHoveredNodeId(n.id);
+  const onNodeMouseLeave = () => setHoveredNodeId(null);
+
+  const activeDomains = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of nodes) {
+      if (n.cluster_id) set.add(n.cluster_id);
+    }
+    return Array.from(set);
+  }, [nodes]);
+
   return (
-    <div style={{ width: "100%", height: "100%", background: "#0d0e14" }}>
+    <div style={{ width: "100%", height: "100%", background: "#0d0e14", position: "relative" }}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.18 }}
         minZoom={0.18}
         maxZoom={2}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onEdgeClick={onEdgeClick}
+        onNodeClick={onNodeClick}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
+        onPaneClick={onPaneClick}
         proOptions={{ hideAttribution: true }}
       >
         <Background color="rgba(255,255,255,0.04)" gap={24} size={1} />
         <MiniMap
-          nodeColor={minimapNodeColor}
+          nodeColor={(n) => {
+            const t = String(n.data?.nodeType ?? n.type ?? "");
+            if (t === "domain") return colorForDomain(String(n.data?.cluster_id ?? ""));
+            if (t === "document") return "#94a3b8";
+            return colorForDomain(String(n.data?.cluster_id ?? ""));
+          }}
           nodeStrokeWidth={2}
           maskColor="rgba(10,11,20,0.65)"
           position="bottom-right"
@@ -399,7 +366,33 @@ export function GraphCanvas({ nodes, edges, confidenceThreshold, bridgeFocus, on
         />
         <Controls />
       </ReactFlow>
-      {activeBridgeEdgeId ? <HypothesisPanel edges={edges} nodes={nodes} /> : null}
+
+      {inspectedEdge ? (
+        <EdgeInspector
+          edge={inspectedEdge}
+          graphId={graphId}
+          allNodes={nodes}
+          onClose={() => setInspectedEdgeId(null)}
+        />
+      ) : (
+        <NodeInspector
+          node={inspectedNode}
+          graphId={graphId}
+          allNodes={nodes}
+          allEdges={edges}
+          onClose={() => setInspectedNodeId(null)}
+          onFocusNode={(id) => {
+            setInspectedNodeId(id);
+            setInspectedEdgeId(null);
+          }}
+        />
+      )}
+
+      {activeBridgeEdgeId && !inspectedEdge && !inspectedNode ? (
+        <HypothesisPanel edges={edges} nodes={nodes} />
+      ) : null}
+
+      <GraphLegend activeDomains={activeDomains} />
     </div>
   );
 }

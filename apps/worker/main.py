@@ -27,6 +27,7 @@ def create_celery_app() -> Any:
             "apps.worker.tasks.ingest_task",
             "apps.worker.tasks.graph_build_task",
             "apps.worker.tasks.plan_task",
+            "apps.api.tasks.hypothesis_task",
         ],
     )
     celery_app.conf.update(task_serializer="json", result_serializer="json", accept_content=["json"])

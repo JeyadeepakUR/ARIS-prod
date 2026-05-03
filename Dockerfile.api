@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc libpq-dev curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# ── Install Python deps in a cacheable layer ──────────────────────────────────
+# Copy only the manifest first so this layer rebuilds only when deps change.
+COPY pyproject.toml ./
+# Stub the packages so pip can process the editable install declaration.
+RUN mkdir -p aris apps && touch aris/__init__.py apps/__init__.py && \
+    pip install --no-cache-dir -e ".[api,agents,llm]"
+
+# ── Copy application source ───────────────────────────────────────────────────
+COPY . .
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "apps.api.main:app", \
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--workers", "1", "--loop", "asyncio"]

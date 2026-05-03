@@ -1,6 +1,7 @@
 "use client";
 
 import { useGraphStore } from "../../lib/stores/graphStore";
+import type { ViewMode } from "../../lib/graph/layout";
 
 type GraphControlsProps = {
   confidenceThreshold: number;
@@ -8,7 +9,15 @@ type GraphControlsProps = {
   onFit: () => void;
   bridgeFocus: boolean;
   onToggleBridgeFocus: () => void;
+  viewMode: ViewMode;
+  onChangeViewMode: (mode: ViewMode) => void;
 };
+
+const VIEW_MODES: { id: ViewMode; label: string; hint: string }[] = [
+  { id: "by-domain", label: "By domain", hint: "Concepts grouped under their domain" },
+  { id: "by-paper", label: "By paper", hint: "Concepts grouped under the paper they came from" },
+  { id: "bridges-only", label: "Bridges", hint: "Only nodes touched by a cross-domain bridge" },
+];
 
 export function GraphControls({
   confidenceThreshold,
@@ -16,13 +25,34 @@ export function GraphControls({
   onFit,
   bridgeFocus,
   onToggleBridgeFocus,
+  viewMode,
+  onChangeViewMode,
 }: GraphControlsProps) {
   const bridgeFocusMode = useGraphStore((state) => state.bridgeFocusMode);
   const toggleBridgeFocus = useGraphStore((state) => state.toggleBridgeFocus);
   const isBridge = bridgeFocusMode || bridgeFocus;
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
+      {/* View mode segmented control */}
+      <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
+        {VIEW_MODES.map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            title={mode.hint}
+            onClick={() => onChangeViewMode(mode.id)}
+            className={`rounded-md px-2.5 py-1 text-[10.5px] font-semibold transition ${
+              viewMode === mode.id
+                ? "bg-white/12 text-ink"
+                : "text-ink-3 hover:text-ink"
+            }`}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+
       <button
         type="button"
         onClick={onFit}

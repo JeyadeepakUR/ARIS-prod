@@ -11,16 +11,43 @@ from urllib.parse import quote
 from apps.api.config import Settings
 
 
+def _long_path(path: Path) -> str:
+    """Return a Windows extended-length path for paths > 260 chars (no-op elsewhere)."""
+    if os.name != "nt":
+        return str(path)
+    abs_str = str(path.resolve())
+    if abs_str.startswith("\\\\?\\") or len(abs_str) < 240:
+        return abs_str
+    if abs_str.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abs_str.lstrip("\\")
+    return "\\\\?\\" + abs_str
+
+
 class DocumentService:
     """Encapsulates object storage interactions used by document ingestion."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    def build_s3_key(self, workspace_id: str, document_id: str, filename: str) -> str:
-        """Build deterministic object key for workspace-scoped uploads."""
+    # Max length of the filename segment in the object key. Keeps the full
+    # local-storage path comfortably below Windows' 260-char MAX_PATH limit
+    # even with the long workspace/document UUID prefix.
+    _MAX_FILENAME_LEN = 80
 
+    def build_s3_key(self, workspace_id: str, document_id: str, filename: str) -> str:
+        """Build deterministic object key for workspace-scoped uploads.
+
+        The filename segment is sanitised (no path separators) and truncated
+        to keep the resulting on-disk path under the Windows MAX_PATH limit.
+        Uniqueness comes from the document_id UUID, so truncation is safe.
+        """
         safe_name = filename.replace("\\", "_").replace("/", "_")
+        if len(safe_name) > self._MAX_FILENAME_LEN:
+            stem = Path(safe_name).stem
+            suffix = Path(safe_name).suffix
+            # Reserve room for the suffix; trim the stem.
+            keep = max(1, self._MAX_FILENAME_LEN - len(suffix))
+            safe_name = stem[:keep] + suffix
         return f"workspaces/{workspace_id}/documents/{document_id}/{safe_name}"
 
     def generate_upload_url(self, s3_key: str) -> str:
@@ -71,8 +98,9 @@ class DocumentService:
             client = self._build_boto_client()
             if client is None:
                 local_object_path = self._local_object_path(s3_key)
-                if local_object_path.exists():
-                    shutil.copyfile(local_object_path, path)
+                long_local = _long_path(local_object_path)
+                if os.path.isfile(long_local):
+                    shutil.copyfile(long_local, str(path))
                     return path, False
 
                 # Last-resort fallback for environments that skipped upload PUT.
@@ -85,8 +113,9 @@ class DocumentService:
                 return path, False
             except Exception:
                 local_object_path = self._local_object_path(s3_key)
-                if local_object_path.exists():
-                    shutil.copyfile(local_object_path, path)
+                long_local = _long_path(local_object_path)
+                if os.path.isfile(long_local):
+                    shutil.copyfile(long_local, str(path))
                     return path, False
 
                 with path.open("w", encoding="utf-8") as handle:

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aris"
-version = "0.1.0"
-description = "ARIS - A clean, production-ready Python system"
+version = "0.2.0"
+description = "ARIS - Autonomous Research Intelligence System"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -14,42 +14,62 @@ dev = [
     "mypy>=1.7.0",
     "ruff>=0.1.0",
     "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "aiosqlite>=0.19.0",
+    "cryptography>=42.0.0",
 ]
-pdf = [
-    "pypdf>=4.0.0",
-]
-ml = [
-    "torch>=2.1.0,<3.0.0",
-    "transformers>=4.37.0,<5.0.0",
-    "numpy>=1.24",
-    "scikit-learn>=1.3",
-    "hdbscan>=0.8.36",
-    "spacy>=3.7.0",
-]
+
 api = [
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
     "pydantic>=2.5.0",
+    "pydantic-settings>=2.2.1",
     "httpx>=0.27.0",
     "sqlalchemy>=2.0",
     "asyncpg>=0.29.0",
+    "psycopg[binary]>=3.1.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
-    "pydantic-settings>=2.2.1",
     "email-validator>=2.1.0.post1",
     "celery>=5.4.0",
     "redis>=5.0.0",
     "boto3>=1.34.0",
+    "pgvector>=0.3.0",
+    "sse-starlette>=2.1.0",
 ]
+
+agents = [
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-ollama>=0.2.0",
+    "langchain-groq>=0.2.0",
+    "groq>=0.11.0",
+]
+
+ingestion = [
+    "pymupdf>=1.24.0",
+    "fastembed>=0.3.0",
+]
+
 llm = [
     "openai>=1.30.0",
     "anthropic>=0.28.0",
     "httpx>=0.27.0",
 ]
 
+all = [
+    "aris[api]",
+    "aris[agents]",
+    "aris[ingestion]",
+    "aris[llm]",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["aris*"]
+include = ["aris*", "apps*"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -72,3 +92,7 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = []
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests", "apps"]

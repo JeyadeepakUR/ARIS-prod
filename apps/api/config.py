@@ -33,10 +33,28 @@ class Settings(BaseSettings):
     local_object_store_base_url: str = "http://127.0.0.1:8000"
 
     # LLM provider settings
-    llm_provider: str = "mock"  # openai | anthropic | ollama | mock
-    llm_model: str = ""  # defaults per provider if empty
+    llm_provider: str = "mock"  # ollama | groq | openrouter | openai | anthropic | mock
+    llm_model: str = ""         # defaults per provider if empty
     llm_api_key: str = ""
-    llm_base_url: str = ""  # for Ollama: http://localhost:11434
+    llm_base_url: str = ""      # kept for backwards compat; prefer ollama_base_url
+
+    # Ollama (local, free — https://ollama.com)
+    ollama_base_url: str = "http://localhost:11434"
+
+    # Groq (free tier — https://console.groq.com)
+    groq_api_key: str = ""
+
+    # OpenRouter (free models available)
+    openrouter_api_key: str = ""
+
+    # Embeddings
+    embed_model: str = "nomic-embed-text"   # must be pulled in Ollama
+    embed_base_url: str = ""                # defaults to ollama_base_url if empty
+
+    # Langfuse observability (self-hosted, optional)
+    langfuse_host: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
 
     jwt_private_key: str = ""
     jwt_public_key: str = ""

@@ -12,6 +12,8 @@ from sqlalchemy import text
 from apps.api.config import get_settings
 from apps.api.core.database import Base, dispose_database, get_engine, init_database
 from apps.api.routers.auth import router as auth_router
+from apps.api.routers.chunks import router as chunks_router
+from apps.api.routers.contradictions import router as contradictions_router
 from apps.api.routers.documents import router as documents_router
 from apps.api.routers.edges import router as edges_router
 from apps.api.routers.graphs import router as graphs_router
@@ -20,6 +22,7 @@ from apps.api.routers.jobs import router as jobs_router
 from apps.api.routers.nodes import router as nodes_router
 from apps.api.routers.object_storage import router as object_storage_router
 from apps.api.routers.plans import router as plans_router
+from apps.api.routers.stream import router as stream_router
 from apps.api.routers.workspaces import router as workspaces_router
 
 
@@ -56,13 +59,16 @@ def create_app() -> FastAPI:
     )
     app.include_router(auth_router)
     app.include_router(workspaces_router)
+    app.include_router(contradictions_router)
     app.include_router(documents_router)
     app.include_router(jobs_router)
     app.include_router(graphs_router)
     app.include_router(nodes_router)
     app.include_router(edges_router)
+    app.include_router(chunks_router)
     app.include_router(hypotheses_router)
     app.include_router(plans_router)
+    app.include_router(stream_router)
     app.include_router(object_storage_router)
 
     @app.get("/health")

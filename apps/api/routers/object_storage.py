@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from uuid import UUID
 
@@ -16,6 +17,21 @@ from apps.api.models.document import Document
 from apps.api.models.job import AsyncJob
 
 router = APIRouter(prefix="/object-storage", tags=["object-storage"])
+
+
+def _long_path(path: Path) -> str:
+    """Return a Windows extended-length path string for paths > 260 chars.
+
+    No-op on non-Windows platforms.
+    """
+    if os.name != "nt":
+        return str(path)
+    abs_str = str(path.resolve())
+    if abs_str.startswith("\\\\?\\") or len(abs_str) < 240:
+        return abs_str
+    if abs_str.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abs_str.lstrip("\\")
+    return "\\\\?\\" + abs_str
 
 
 def _queue_ingest_job(job_id: UUID, document_id: UUID, settings: Settings) -> tuple[bool, str | None]:
@@ -57,10 +73,14 @@ async def put_object(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     object_path = _resolve_object_path(settings, bucket, object_key)
-    object_path.parent.mkdir(parents=True, exist_ok=True)
+    # Use extended-length path syntax on Windows so we can still write files
+    # whose absolute path exceeds the legacy MAX_PATH (260) limit.
+    parent_str = _long_path(object_path.parent)
+    os.makedirs(parent_str, exist_ok=True)
 
     payload = await request.body()
-    object_path.write_bytes(payload)
+    with open(_long_path(object_path), "wb") as fh:
+        fh.write(payload)
 
     try:
         segments = object_key.split("/")
@@ -114,7 +134,8 @@ async def get_object(
     settings: Settings = Depends(get_config),
 ) -> FileResponse:
     object_path = _resolve_object_path(settings, bucket, object_key)
-    if not object_path.exists() or not object_path.is_file():
+    long_str = _long_path(object_path)
+    if not os.path.isfile(long_str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Object not found")
 
-    return FileResponse(path=object_path)
+    return FileResponse(path=long_str)

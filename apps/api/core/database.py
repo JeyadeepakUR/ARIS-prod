@@ -25,7 +25,12 @@ def init_database(settings: Settings) -> None:
     """Initialize async engine and session factory from application settings."""
 
     global engine, SessionLocal
-    engine = create_async_engine(settings.database_url, echo=settings.database_echo, future=True)
+    engine = create_async_engine(
+        settings.database_url,
+        echo=settings.database_echo,
+        future=True,
+        pool_pre_ping=True,   # test connections before use; replaces stale ones transparently
+    )
     SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

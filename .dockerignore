@@ -1,0 +1,48 @@
+# Runtime state — never bake into image
+.aris_object_store/
+*.sqlite3
+*.db
+aris_platform.db
+db.sqlite3
+
+# Env files
+.env
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+.venv/
+venv/
+build/
+dist/
+
+# Type/lint caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Node / Next.js (handled by apps/web/Dockerfile separately)
+node_modules/
+.next/
+apps/web/.next/
+apps/web/node_modules/
+*.tsbuildinfo
+
+# Git
+.git/
+.github/
+
+# Docs and experiments
+experiments/
+data/
+report/
+*.md
+!README.md

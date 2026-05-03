@@ -116,6 +116,7 @@ CREATE TABLE async_jobs (
     celery_task_id VARCHAR(255),
     payload JSONB DEFAULT '{}',
     result JSONB DEFAULT '{}',
+    trace JSON NOT NULL DEFAULT '{}',
     error TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     started_at TIMESTAMPTZ,

@@ -1,8 +1,53 @@
 version: "3.9"
 
+# ── Shared environment blocks ──────────────────────────────────────────────────
+x-db-env: &db-env
+  DATABASE_URL: postgresql+asyncpg://aris:aris@postgres:5432/aris
+  DATABASE_ECHO: "false"
+
+x-redis-env: &redis-env
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  CELERY_TASK_ALWAYS_EAGER: "false"
+
+x-llm-env: &llm-env
+  LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+  LLM_MODEL: ${LLM_MODEL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+x-embed-env: &embed-env
+  EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+  EMBED_BASE_URL: ${EMBED_BASE_URL:-http://host.docker.internal:11434}
+
+x-jwt-env: &jwt-env
+  JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+  JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+  JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-30}
+
+x-s3-env: &s3-env
+  S3_BUCKET_NAME: ${S3_BUCKET_NAME:-aris-documents}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  LOCAL_OBJECT_STORE_BASE_URL: http://localhost:8000
+
+x-langfuse-env: &langfuse-env
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+
 services:
+
+  # ── PostgreSQL with pgvector ──────────────────────────────────────────────────
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     container_name: aris-postgres
     environment:
       POSTGRES_USER: aris
@@ -12,57 +57,111 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # SQL init scripts run in alphabetical order on first boot only.
+      - ./scripts/init-dbs.sh:/docker-entrypoint-initdb.d/00_init-dbs.sh:ro
       - ./migrations/versions/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      - ./migrations/versions/002_full_text.sql:/docker-entrypoint-initdb.d/002_full_text.sql:ro
+      - ./migrations/003_pgvector.sql:/docker-entrypoint-initdb.d/003_pgvector.sql:ro
+      - ./migrations/004_agent_traces.sql:/docker-entrypoint-initdb.d/004_agent_traces.sql:ro
+      - ./migrations/005_fix_graph_fk.sql:/docker-entrypoint-initdb.d/005_fix_graph_fk.sql:ro
+      - ./migrations/006_node_embedding_column.sql:/docker-entrypoint-initdb.d/006_node_embedding_column.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aris"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
+  # ── Redis (Celery broker + result backend) ────────────────────────────────────
   redis:
-    image: redis:7
+    image: redis:7-alpine
     container_name: aris-redis
     ports:
       - "6379:6379"
-
-  api:
-    image: python:3.11-slim
-    container_name: aris-api
-    working_dir: /workspace
     volumes:
-      - ./:/workspace
-    command: >
-      sh -c "pip install -e .[api,pdf] &&
-      uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload"
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── FastAPI backend ───────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: aris-api
     environment:
-      DATABASE_URL: postgresql+asyncpg://aris:aris@postgres:5432/aris
-      REDIS_URL: redis://redis:6379/0
-      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
-      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      APP_ENV: production
+      <<: [*db-env, *redis-env, *llm-env, *embed-env, *jwt-env, *s3-env, *langfuse-env]
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    volumes:
+      - object_store_data:/workspace/.aris_object_store
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8000:8000"
+    restart: unless-stopped
 
+  # ── Celery worker ─────────────────────────────────────────────────────────────
   worker:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
     container_name: aris-worker
-    working_dir: /workspace
-    volumes:
-      - ./:/workspace
-    command: >
-      sh -c "pip install -e .[api,pdf] &&
-      python -m apps.worker.main"
     environment:
-      DATABASE_URL: postgresql+asyncpg://aris:aris@postgres:5432/aris
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-aris-documents}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
-      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
-      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      APP_ENV: production
+      <<: [*db-env, *redis-env, *llm-env, *embed-env, *jwt-env, *s3-env, *langfuse-env]
+    volumes:
+      - object_store_data:/workspace/.aris_object_store
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Next.js frontend ──────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: aris-web
+    environment:
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  # ── Langfuse — LLM observability (optional) ───────────────────────────────────
+  # Access at http://localhost:3001 — create a project to get API keys.
+  # Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env to enable tracing.
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: aris-langfuse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://aris:aris@postgres:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-changeme-in-production}
+      SALT: ${LANGFUSE_SALT:-changeme-in-production}
+    restart: unless-stopped
+    profiles:
+      - observability
 
 volumes:
   postgres_data:
+  redis_data:
+  object_store_data:

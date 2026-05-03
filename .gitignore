@@ -51,6 +51,10 @@ Thumbs.db
 coverage/
 htmlcov/
 .pytest_cache/
+.api.log
+.api.err.log
+.web.log
+.web.err.log
 
 # Node / Next.js
 node_modules/
@@ -67,17 +71,28 @@ data/
 
 # Local runtime/state files
 .env
+.env.local
+.env.*.local
 .aris_object_store/
 *.sqlite3
 *.db
+*.db.bak*
+*.bak
 aris_platform.db
 db.sqlite3
 
 # Local report artifacts (major project submission only)
 report/
 
-# Temporary local debug scripts
+# Local research artifacts
+papers/
+
+# Temporary local debug & smoke scripts (kept untracked, regenerated as needed)
 test_domain_network.py
+.check_*.py
+.smoke_*.py
+scratch_*.py
+debug_*.py
 
 # Root documentation policy
 /*.md
