@@ -12,7 +12,29 @@ class MockProvider:
     def complete(self, prompt: str, *, max_tokens: int = 512, temperature: float = 0.2) -> str:
         prompt_lower = prompt.lower()
 
-        # Order matters: more specific checks first.
+        # ── New LangGraph agent prompts (checked first, most specific) ─────────
+        if "scientific concept extractor" in prompt_lower or (
+            "extract" in prompt_lower and "concepts" in prompt_lower and "label" in prompt_lower
+        ):
+            return self._concept_list_response(prompt)
+
+        if "research bridge analyst" in prompt_lower or (
+            "meaningful research bridge" in prompt_lower
+        ):
+            return self._bridge_validation_response(prompt)
+
+        if "multi-hop" in prompt_lower or "indirect bridge" in prompt_lower:
+            return self._multihop_response(prompt)
+
+        if "contradictory claims" in prompt_lower or (
+            "contradicts" in prompt_lower and "excerpt" in prompt_lower
+        ):
+            return self._contradiction_response(prompt)
+
+        if "research gap" in prompt_lower and "investigation_priority" in prompt_lower:
+            return self._gap_response(prompt)
+
+        # ── Legacy / other prompts ─────────────────────────────────────────────
         if "falsifiable" in prompt_lower or (
             "hypothesis" in prompt_lower and "statement" in prompt_lower
         ):
@@ -46,6 +68,94 @@ class MockProvider:
                 pass
         return {"raw": text}
 
+    # ── New agent response helpers ─────────────────────────────────────────────
+
+    def _concept_list_response(self, prompt: str) -> str:
+        """Return concept list in the format expected by concept_extractor_node."""
+        prompt_lower = prompt.lower()
+        concepts = []
+
+        if any(w in prompt_lower for w in ["machine learning", "neural", "deep learning", "training"]):
+            concepts += [
+                {"label": "deep neural network", "domain": "Machine Learning", "confidence": 0.9},
+                {"label": "transfer learning", "domain": "Machine Learning", "confidence": 0.85},
+            ]
+        if any(w in prompt_lower for w in ["security", "attack", "intrusion", "threat", "malware"]):
+            concepts += [
+                {"label": "intrusion detection system", "domain": "Cybersecurity", "confidence": 0.88},
+                {"label": "anomaly detection", "domain": "Cybersecurity", "confidence": 0.82},
+            ]
+        if any(w in prompt_lower for w in ["image", "vision", "object", "detection"]):
+            concepts += [
+                {"label": "object detection pipeline", "domain": "Computer Vision", "confidence": 0.86},
+            ]
+        if any(w in prompt_lower for w in ["language", "nlp", "text", "bert"]):
+            concepts += [
+                {"label": "pre-trained language model", "domain": "Natural Language Processing", "confidence": 0.85},
+            ]
+        if any(w in prompt_lower for w in ["clinical", "patient", "diagnosis", "health", "medical"]):
+            concepts += [
+                {"label": "clinical decision support", "domain": "Healthcare", "confidence": 0.87},
+            ]
+
+        # Always return at least 2 concepts
+        if len(concepts) < 2:
+            concepts = [
+                {"label": "gradient-based optimization", "domain": "Machine Learning", "confidence": 0.88},
+                {"label": "representation learning", "domain": "Machine Learning", "confidence": 0.80},
+            ]
+
+        return json.dumps({"concepts": concepts[:5]})
+
+    def _bridge_validation_response(self, prompt: str) -> str:
+        """Validate cross-domain bridge — always valid in mock for testability."""
+        return json.dumps({
+            "valid": True,
+            "bridge_concept": "shared optimization objective",
+            "confidence": 0.78,
+            "explanation": (
+                "Both concepts rely on gradient-based optimization, enabling direct "
+                "transfer of regularisation techniques across domains."
+            ),
+        })
+
+    def _multihop_response(self, prompt: str) -> str:
+        return json.dumps({
+            "bridge_concept": "iterative feature refinement pathway",
+            "confidence": 0.65,
+            "explanation": (
+                "The indirect chain propagates a shared learning paradigm through "
+                "an intermediate representation step."
+            ),
+        })
+
+    def _contradiction_response(self, prompt: str) -> str:
+        """Return non-contradicting by default to keep tests deterministic."""
+        return json.dumps({
+            "contradicts": False,
+            "contradiction_type": None,
+            "severity": 0.0,
+            "reasoning": "The excerpts discuss related but non-contradictory aspects.",
+            "claim_a_summary": "Excerpt A describes a method or result.",
+            "claim_b_summary": "Excerpt B extends or complements excerpt A.",
+        })
+
+    def _gap_response(self, prompt: str) -> str:
+        return json.dumps({
+            "gap_description": (
+                "No direct study of the relationship between these two concepts has been "
+                "published despite their frequent co-occurrence via shared intermediaries. "
+                "This gap limits cross-domain synthesis."
+            ),
+            "investigation_priority": 0.72,
+            "rationale": (
+                "Researchers in both fields should collaborate on a controlled study "
+                "that explicitly tests the transfer mechanism."
+            ),
+        })
+
+    # ── Legacy response helpers ────────────────────────────────────────────────
+
     def _bridge_response(self, prompt: str) -> str:
         return json.dumps({
             "bridge_concept": "shared optimization objective",
@@ -77,60 +187,52 @@ class MockProvider:
     def _hypothesis_response(self, prompt: str) -> str:
         return json.dumps({
             "statement": (
-                "The observed performance gap between the source and target methods narrows "
-                "when the shared intermediate representation is explicitly aligned during training."
+                "We hypothesize that the observed performance gap between the source and target "
+                "methods narrows when the shared intermediate representation is explicitly "
+                "aligned during training."
             ),
             "null_hypothesis": (
-                "Explicit alignment of intermediate representations does not reduce the performance gap."
+                "Explicit alignment of intermediate representations does not reduce "
+                "the performance gap."
             ),
             "methodology_hint": (
-                "Implement a contrastive alignment loss on the intermediate layers; "
+                "Implement a contrastive alignment loss on the intermediate layers and "
                 "evaluate on held-out benchmarks from both domains."
             ),
-            "evidence_basis": "Bridge edge confidence and shared concept co-occurrence in both documents.",
+            "evidence_basis": "Bridge edge confidence and shared concept co-occurrence.",
             "hypothesis_type": "causal",
+            "testability_score": 0.82,
+            "confidence": 0.75,
         })
 
     def _concept_extraction_response(self, prompt: str) -> str:
-        """Return mock named concepts for concept-extraction prompts."""
+        """Legacy format: return domain-grouped concepts for old pipeline."""
         prompt_lower = prompt.lower()
-        # Pick domains based on keywords in the excerpt
         domains = []
         if any(w in prompt_lower for w in ["image", "vision", "caption", "object"]):
             domains.append({
                 "name": "computer_vision",
-                "concepts": ["image captioning", "visual attention mechanism", "convolutional feature extraction", "object detection pipeline", "vision transformer"],
+                "concepts": ["image captioning", "visual attention mechanism", "object detection pipeline"],
             })
-        if any(w in prompt_lower for w in ["language", "text", "nlp", "bert", "gpt", "transformer"]):
+        if any(w in prompt_lower for w in ["language", "text", "nlp", "bert", "transformer"]):
             domains.append({
                 "name": "natural_language_processing",
-                "concepts": ["pre-trained language model", "attention-based encoding", "sequence-to-sequence learning", "text generation", "semantic representation"],
+                "concepts": ["pre-trained language model", "attention-based encoding", "text generation"],
             })
         if any(w in prompt_lower for w in ["deep", "neural", "training", "gradient", "loss"]):
             domains.append({
                 "name": "machine_learning",
-                "concepts": ["deep neural network", "transfer learning", "contrastive learning", "fine-tuning strategy", "self-supervised pretraining"],
+                "concepts": ["deep neural network", "transfer learning", "contrastive learning"],
             })
         if any(w in prompt_lower for w in ["security", "attack", "threat", "malware", "intrusion"]):
             domains.append({
                 "name": "cybersecurity",
-                "concepts": ["adversarial attack detection", "intrusion detection system", "threat modelling", "anomaly-based detection", "federated security"],
+                "concepts": ["adversarial attack detection", "intrusion detection system", "threat modelling"],
             })
-        if any(w in prompt_lower for w in ["blockchain", "consensus", "ledger", "smart contract"]):
-            domains.append({
-                "name": "blockchain",
-                "concepts": ["proof-of-stake consensus", "smart contract execution", "decentralised identity", "on-chain governance", "zero-knowledge proof"],
-            })
-        if any(w in prompt_lower for w in ["medical", "clinical", "patient", "diagnosis", "health"]):
-            domains.append({
-                "name": "healthcare",
-                "concepts": ["clinical decision support", "medical image analysis", "patient outcome prediction", "electronic health record", "biomarker detection"],
-            })
-        # Ensure at least two domains
         if len(domains) < 2:
             domains = [
-                {"name": "machine_learning", "concepts": ["deep neural network", "transfer learning", "contrastive learning", "self-supervised pretraining", "model fine-tuning"]},
-                {"name": "computer_vision", "concepts": ["image captioning", "visual attention mechanism", "object detection", "feature extraction", "visual grounding"]},
+                {"name": "machine_learning", "concepts": ["deep neural network", "transfer learning"]},
+                {"name": "computer_vision", "concepts": ["image captioning", "visual attention mechanism"]},
             ]
         return json.dumps({"domains": domains[:4]})
 

@@ -3,7 +3,7 @@
 Providers implement the LLMProvider protocol.
 Use get_provider() to obtain the configured instance.
 
-Supported backends: openai | anthropic | ollama | mock
+Supported backends: ollama | groq | openrouter | openai | anthropic | mock
 """
 
 from __future__ import annotations
@@ -60,10 +60,16 @@ def get_provider(
         from aris.llm.ollama_provider import OllamaProvider
         return OllamaProvider(model=model or "llama3.2", base_url=base_url or "http://localhost:11434")
 
+    if name == "groq":
+        from aris.llm.groq_provider import GroqProvider
+        return GroqProvider(model=model or "llama-3.3-70b-versatile", api_key=api_key)
+
     if name == "openrouter":
         from aris.llm.openrouter_provider import OpenRouterProvider
         return OpenRouterProvider(
-            model=model or "meta-llama/llama-4-scout:free",
+            # Llama-3.3-70B is dramatically stronger at structured extraction
+            # than 20B-class models and is free on OpenRouter.
+            model=model or "meta-llama/llama-3.3-70b-instruct:free",
             api_key=api_key,
         )
 
