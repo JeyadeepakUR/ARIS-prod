@@ -64,7 +64,24 @@ _GENERIC_BLOCKLIST: set[str] = {
     "process", "task", "feature", "features", "training", "testing",
     "evaluation", "metric", "metrics", "function", "functions", "value",
     "values", "input", "output", "dataset", "datasets", "table", "figure",
+    # Category phrases that look like concepts but name a genre, not a specific thing
+    "neural network", "deep learning model", "machine learning model",
+    "artificial neural network", "learning algorithm", "classification model",
+    "prediction model", "detection system", "neural network model",
 }
+
+# Patterns that match category labels — labels like "X Architecture", "X Technique",
+# "X Approach" where X is also a generic field word.  These name a class of things,
+# not a specific named scientific concept.
+_CATEGORY_LABEL_RE = re.compile(
+    r"^(neural network|machine learning|deep learning|artificial intelligence|"
+    r"statistical|computational|learning|classification|prediction|detection|"
+    r"recognition|processing|natural language|computer vision)\s+"
+    r"(architecture|architectures|approach|approaches|method|methods|"
+    r"technique|techniques|algorithm|algorithms|framework|frameworks|"
+    r"model|models|system|systems|scheme|schemes|strategy|strategies)s?$",
+    re.IGNORECASE,
+)
 
 
 # ── Prompt with few-shot examples and strict schema ─────────────────────────
@@ -78,8 +95,13 @@ algorithms, datasets, named techniques, theories, or named phenomena.
 
 # Rules
 - Extract 4-10 concepts per excerpt. Skip if there are fewer specific concepts.
-- A concept is a SPECIFIC named entity (e.g. "Transformer", "BERT", "Federated \
-Averaging", "Differential Privacy", "Convolutional Neural Network").
+- A concept is a SPECIFIC NAMED entity: a named algorithm, architecture, dataset,
+  metric, protocol, or theory (e.g. "Transformer", "BERT", "Federated Averaging",
+  "Differential Privacy", "ResNet-50", "Adam Optimizer", "BLEU Score").
+- NEVER extract category labels or genre descriptions. These are INVALID:
+    "Neural Network Architecture", "Machine Learning Model",
+    "Deep Learning Approach", "Classification Technique", "Learning Algorithm".
+  Instead extract the SPECIFIC thing: "LSTM", "ResNet", "Dropout", "BERT".
 - NEVER extract generic words alone. Banned standalone labels: \
 data, method, model, system, approach, result, performance, technique, \
 analysis, framework, study, algorithm, process, task, feature, training, \
@@ -87,7 +109,11 @@ testing, evaluation.
 - Label = canonical form, 3-80 characters, Title Case for multi-word names, \
 preserve standard acronyms (e.g. "BERT", "GAN", "TLS").
 - Strip leading articles ("the", "a", "an") and trailing punctuation.
-- Choose the SINGLE best-matching domain from the vocabulary above.
+- CRITICAL domain rule: assign the domain of the CONCEPT ITSELF, NOT the \
+application domain of the paper. Example: a paper about "cybersecurity using \
+BERT" → BERT belongs to "Natural Language Processing", not "Cybersecurity". \
+A CNN used for medical imaging belongs to "Computer Vision" or "Deep Learning", \
+not "Healthcare".
 - confidence is your certainty the concept is named, specific, and correctly \
 assigned (0.0-1.0).
 
@@ -97,9 +123,19 @@ using contrastive loss for clinical entity recognition."
 JSON:
 {{"concepts": [
   {{"label": "BERT", "domain": "Natural Language Processing", "confidence": 0.95}},
-  {{"label": "BioGPT", "domain": "Healthcare", "confidence": 0.9}},
+  {{"label": "BioGPT", "domain": "Natural Language Processing", "confidence": 0.9}},
   {{"label": "Contrastive Loss", "domain": "Deep Learning", "confidence": 0.85}},
   {{"label": "Clinical Entity Recognition", "domain": "Healthcare", "confidence": 0.85}}
+]}}
+
+Excerpt: "Our CNN model achieves 94% accuracy on breast tumour X-ray classification \
+using transfer learning from ImageNet."
+JSON:
+{{"concepts": [
+  {{"label": "Convolutional Neural Network", "domain": "Deep Learning", "confidence": 0.95}},
+  {{"label": "Transfer Learning", "domain": "Machine Learning", "confidence": 0.95}},
+  {{"label": "ImageNet", "domain": "Computer Vision", "confidence": 0.9}},
+  {{"label": "Tumour Classification", "domain": "Healthcare", "confidence": 0.85}}
 ]}}
 
 Excerpt: "Federated Averaging is combined with differential privacy noise \
@@ -109,6 +145,16 @@ JSON:
   {{"label": "Federated Averaging", "domain": "Machine Learning", "confidence": 0.95}},
   {{"label": "Differential Privacy", "domain": "Cybersecurity", "confidence": 0.95}},
   {{"label": "CIFAR-10", "domain": "Computer Vision", "confidence": 0.9}}
+]}}
+
+Excerpt: "We use LSTM and attention mechanisms to detect anomalous network \
+traffic patterns in IDS datasets."
+JSON:
+{{"concepts": [
+  {{"label": "LSTM", "domain": "Deep Learning", "confidence": 0.95}},
+  {{"label": "Attention Mechanism", "domain": "Deep Learning", "confidence": 0.9}},
+  {{"label": "Intrusion Detection System", "domain": "Cybersecurity", "confidence": 0.95}},
+  {{"label": "Anomaly Detection", "domain": "Machine Learning", "confidence": 0.85}}
 ]}}
 
 # Excerpt(s) to extract from
@@ -147,16 +193,17 @@ def _normalize_label(raw: str) -> str:
 
 
 def _is_low_value(label: str) -> bool:
-    """Reject single common words and pure punctuation."""
+    """Reject generic words, pure punctuation, and category-label phrases."""
     norm = label.lower().strip()
     if len(norm) < 3:
         return True
     if norm in _GENERIC_BLOCKLIST:
         return True
-    # Single short word that's also a generic
-    if " " not in norm and norm in _GENERIC_BLOCKLIST:
-        return True
     if not re.search(r"[A-Za-z]", label):
+        return True
+    # Reject category-label patterns: "Neural Network Architecture",
+    # "Machine Learning Technique", "Deep Learning Approach", etc.
+    if _CATEGORY_LABEL_RE.match(norm):
         return True
     return False
 
@@ -416,7 +463,8 @@ async def concept_extractor_node(state: ResearchState, config: RunnableConfig) -
             )
         )
 
-    # Concept nodes + edges
+    # Concept nodes — pass 1: add all nodes first so FK references resolve
+    concept_node_pairs: list[tuple[object, dict, list[float] | None]] = []
     for concept, embedding in zip(unique, embeddings):
         node_id = uuid4()
         session.add(
@@ -433,13 +481,19 @@ async def concept_extractor_node(state: ResearchState, config: RunnableConfig) -
                     "extracted_by": "concept_extractor",
                     "source_chunk_ids": concept["source_chunk_ids"][:8],
                     "source_document_ids": concept.get("source_document_ids", []),
-                    # Store embedding inline for SQLite/non-pgvector environments
-                    # so the bridge agent can do Python-side cosine similarity.
                     "embedding_inline": embedding if embedding is not None else None,
                 },
             )
         )
+        concept_node_pairs.append((node_id, concept, embedding))
 
+    # Flush all nodes (domain hubs + document hubs + concept nodes) before
+    # inserting edges — asyncpg bulk INSERT doesn't guarantee FK-safe ordering
+    # when nodes and edges are flushed together.
+    await session.flush()
+
+    # Concept nodes — pass 2: add edges now that all referenced nodes are in DB
+    for node_id, concept, embedding in concept_node_pairs:
         if embedding is not None:
             node_embedding_pairs.append((str(node_id), embedding))
 

@@ -5,6 +5,15 @@ Queries the DB for cross-domain node pairs with high cosine similarity
 (pgvector self-join), then asks the LLM to validate and describe each bridge
 mechanism. Also detects multi-hop bridges (A–C, C–B → A–B via C).
 
+Changes from v1:
+- Evidence passed to validation LLM is actual chunk text, not just node labels.
+- Sibling-domain pairs (ML ↔ Deep Learning, ML ↔ RL, etc.) are hard-filtered
+  before any LLM call — these are parent/child fields, not cross-domain bridges.
+- Validation prompt is research-grade: requires a specific named mechanism and
+  rejects generic category descriptions.
+- BridgeEdge evidence_a/b stores real chunk text snippets for downstream
+  hypothesis generation and the EdgeInspector "evidence side by side" panel.
+
 Dependencies injected through LangGraph config["configurable"]:
     session      — AsyncSession
     llm_provider — LLMProvider
@@ -17,7 +26,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from langchain_core.runnables import RunnableConfig
-from sqlalchemy import text
+from sqlalchemy import text as sa_text
 
 from apps.api.models.edge import Edge
 from aris.agents.state import BridgeEdge, ResearchState, StreamEvent
@@ -25,45 +34,93 @@ from aris.retrieval.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
+# ── Domain proximity guard ──────────────────────────────────────────────────
+# These domain pairs are intellectually the same field or direct parent/child
+# relationships. A bridge between them is trivially obvious and not useful.
+_SIBLING_DOMAIN_PAIRS: frozenset[frozenset] = frozenset({
+    frozenset({"Machine Learning", "Deep Learning"}),
+    frozenset({"Machine Learning", "Reinforcement Learning"}),
+    frozenset({"Deep Learning", "Reinforcement Learning"}),
+    frozenset({"Machine Learning", "Statistics"}),
+    frozenset({"Deep Learning", "Computer Vision"}),       # modern CV *is* deep learning
+    frozenset({"Deep Learning", "Natural Language Processing"}),  # modern NLP *is* DL
+})
+
+# ── Prompts ──────────────────────────────────────────────────────────────────
+
 _BRIDGE_VALIDATION_PROMPT = """\
-Two scientific concepts from different research domains have been found to be \
-semantically similar.
+You are a research intelligence system evaluating cross-domain knowledge bridges.
 
-Concept A: "{label_a}" (Domain: {domain_a})
-Concept B: "{label_b}" (Domain: {domain_b})
-Cosine similarity: {score:.2f}
+A bridge is VALID only if ALL of the following are true:
+1. The two domains are genuinely different disciplines — not parent/child fields
+   (e.g. "Machine Learning" and "Deep Learning" are the SAME field, not different).
+2. The bridge_concept names a SPECIFIC, non-obvious transfer mechanism — not a
+   generic category like "machine learning techniques" or "neural network methods".
+3. A practitioner in Domain B would find the connection SURPRISING and useful.
+4. The connection is supported by the actual evidence text below.
 
-Is there a meaningful research bridge between these concepts — a principle, \
-mechanism, or technique that enables knowledge transfer across the two domains?
+Concept A: "{label_a}"
+Domain A: {domain_a}
+Evidence from paper (Domain A):
+  "{evidence_a}"
 
-Return ONLY a JSON object:
+Concept B: "{label_b}"
+Domain B: {domain_b}
+Evidence from paper (Domain B):
+  "{evidence_b}"
+
+Embedding cosine similarity: {score:.2f}
+
+REJECT if:
+- Domains are same-family (ML/DL/RL/Statistics are all one family)
+- Bridge concept would just repeat the concept names or use generic words
+- Connection is obvious to anyone in either field
+- Evidence does not actually support a specific transfer
+
+VALID bridge_concept examples (specific, named, non-obvious):
+  "Rényi divergence noise calibration for federated gradient privacy"
+  "spectral graph clustering applied to protein interaction network analysis"
+  "zero-knowledge proof compression for verifiable smart contract execution"
+  "attention-based sequence alignment for genomic motif discovery"
+
+INVALID bridge_concept examples (generic, reject these):
+  "machine learning techniques"   — too generic
+  "neural network methods"        — trivial, not a mechanism
+  "deep learning approaches"      — category label, not a transfer mechanism
+  "data processing methods"       — meaningless as a bridge
+
+Return ONLY valid JSON:
 {{
   "valid": true/false,
-  "bridge_concept": "precise transfer mechanism (5-10 words, null if not valid)",
+  "bridge_concept": "precise named transfer mechanism, 8-15 words (null if not valid)",
   "confidence": 0.0-1.0,
-  "explanation": "one sentence"
+  "explanation": "one sentence: what SPECIFICALLY transfers, and why it is non-obvious to domain B practitioners"
 }}"""
 
 _MULTIHOP_PROMPT = """\
-Three concepts form an indirect bridge across research domains:
+Three scientific concepts form an indirect cross-domain bridge:
 
-Source: "{label_a}" (Domain: {domain_a})
+Source:       "{label_a}" (Domain: {domain_a})
 Intermediate: "{label_c}" (Domain: {domain_c})
-Target: "{label_b}" (Domain: {domain_b})
+Target:       "{label_b}" (Domain: {domain_b})
 
-Describe the multi-hop knowledge transfer path.
+The A–C bridge mechanism: {bridge_ac}
+The C–B bridge mechanism: {bridge_cb}
 
-Return ONLY JSON:
+Describe the end-to-end multi-hop knowledge transfer path from {domain_a} to {domain_b}.
+Focus on what a researcher in {domain_b} would actually gain.
+
+Return ONLY:
 {{
-  "bridge_concept": "overall transfer mechanism (5-10 words)",
+  "bridge_concept": "end-to-end transfer mechanism (8-15 words)",
   "confidence": 0.0-1.0,
-  "explanation": "one sentence describing the indirect link"
+  "explanation": "one sentence describing the full indirect link and its research value"
 }}"""
 
-# Free-tier rate-limit aware defaults — fewer LLM calls per build.
-_BRIDGE_MIN_SCORE = 0.62
-_BRIDGE_LIMIT = 20
-_MULTIHOP_MIN_INTERMEDIATE_SCORE = 0.60
+# ── Tunables ─────────────────────────────────────────────────────────────────
+_BRIDGE_MIN_SCORE = 0.50
+_BRIDGE_LIMIT = 40
+_MULTIHOP_MIN_INTERMEDIATE_SCORE = 0.50
 
 
 def _now_iso() -> str:
@@ -79,6 +136,41 @@ def _stream_event(event_type: str, content: dict) -> StreamEvent:
     }
 
 
+async def _fetch_node_evidence(session, node_id: str) -> str:
+    """
+    Return up to two source-chunk text snippets for a concept node.
+
+    Runs under a savepoint so any SQL failure rolls back only this sub-operation,
+    leaving the outer transaction intact. Falls back to "" on any error.
+    """
+    from apps.api.models.node import Node as NodeModel
+    from sqlalchemy import select as sa_select
+    try:
+        async with session.begin_nested():  # SAVEPOINT — protects outer transaction
+            node = await session.scalar(
+                sa_select(NodeModel).where(NodeModel.id == UUID(node_id))
+            )
+            if not node:
+                return ""
+            meta = node.metadata_json or {}
+            chunk_ids = [str(c) for c in meta.get("source_chunk_ids", [])[:2]]
+            if not chunk_ids:
+                return ""
+            placeholders = ", ".join(f":c{i}" for i in range(len(chunk_ids)))
+            cr = await session.execute(
+                sa_text(
+                    "SELECT content FROM document_chunks "
+                    f"WHERE id::text IN ({placeholders}) LIMIT 2"
+                ),
+                {f"c{i}": cid for i, cid in enumerate(chunk_ids)},
+            )
+            texts = [r.content for r in cr.fetchall() if r.content]
+            return " [...] ".join(t[:450] for t in texts)
+    except Exception as exc:
+        logger.debug("_fetch_node_evidence(%s): %s", node_id, exc)
+        return ""
+
+
 async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -> dict:
     cfg = config.get("configurable", {})
     session = cfg.get("session")
@@ -92,7 +184,7 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
     loop = asyncio.get_event_loop()
     vs = VectorStore(session)
 
-    # ── 1. Find candidate cross-domain pairs via pgvector self-join ───────────
+    # ── 1. Candidate cross-domain pairs via pgvector self-join ────────────────
     try:
         candidates = await vs.cross_domain_bridge_search(
             graph_id=graph_id,
@@ -107,39 +199,78 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
         "bridge_discoverer: %d cross-domain candidates (min_score=%.2f) for graph %s",
         len(candidates), _BRIDGE_MIN_SCORE, graph_id,
     )
-    if candidates:
-        domains_seen = {(r["domain1"], r["domain2"]) for r in candidates}
-        logger.info("bridge_discoverer: domain pairs — %s", domains_seen)
 
-    # ── 2. Validate each candidate with LLM ───────────────────────────────────
+    # ── 2. Filter sibling-domain pairs before any LLM call ────────────────────
+    non_trivial = []
+    for row in candidates:
+        pair = frozenset({row["domain1"], row["domain2"]})
+        if pair in _SIBLING_DOMAIN_PAIRS:
+            logger.debug(
+                "bridge_discoverer: skipping sibling-domain pair %s ↔ %s",
+                row["domain1"], row["domain2"],
+            )
+            continue
+        non_trivial.append(row)
+
+    logger.info(
+        "bridge_discoverer: %d candidates remain after sibling-domain filter (%d removed)",
+        len(non_trivial), len(candidates) - len(non_trivial),
+    )
+
+    # ── 3. Pre-fetch chunk evidence for all candidate nodes (cached) ──────────
+    all_node_ids: set[str] = set()
+    for row in non_trivial:
+        all_node_ids.add(row["node1_id"])
+        all_node_ids.add(row["node2_id"])
+
+    evidence_cache: dict[str, str] = {}
+    for nid in all_node_ids:
+        evidence_cache[nid] = await _fetch_node_evidence(session, nid)
+
+    # ── 4. LLM validation with real evidence ──────────────────────────────────
     validated_bridges: list[BridgeEdge] = []
     already_paired: set[frozenset[str]] = set()
 
-    for row in candidates:
+    for row in non_trivial:
         pair_key = frozenset({row["node1_id"], row["node2_id"]})
         if pair_key in already_paired:
             continue
 
+        evidence_a = evidence_cache.get(row["node1_id"]) or row["node1_label"]
+        evidence_b = evidence_cache.get(row["node2_id"]) or row["node2_label"]
+
         prompt = _BRIDGE_VALIDATION_PROMPT.format(
             label_a=row["node1_label"],
             domain_a=row["domain1"],
+            evidence_a=evidence_a[:400],
             label_b=row["node2_label"],
             domain_b=row["domain2"],
+            evidence_b=evidence_b[:400],
             score=float(row["similarity"]),
         )
         try:
             result = await loop.run_in_executor(
                 None,
-                lambda p=prompt: llm_provider.complete_json(p, max_tokens=250),
+                lambda p=prompt: llm_provider.complete_json(p, max_tokens=300),
             )
         except Exception as exc:
             logger.warning("bridge_discoverer: LLM validation failed — %s", exc)
             continue
 
         if not result.get("valid"):
+            logger.debug(
+                "bridge_discoverer: rejected '%s' ↔ '%s' — %s",
+                row["node1_label"], row["node2_label"],
+                result.get("explanation", "no reason given"),
+            )
             continue
 
-        bridge_concept = str(result.get("bridge_concept") or "").strip()[:255] or "cross-domain link"
+        bridge_concept = str(result.get("bridge_concept") or "").strip()[:255]
+        if not bridge_concept or bridge_concept.lower() in {
+            "null", "none", "n/a", "na", ""
+        }:
+            continue
+
         confidence = min(max(float(result.get("confidence", 0.7)), 0.0), 1.0)
 
         bridge: BridgeEdge = {
@@ -148,8 +279,10 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
             "source_domain": row["domain1"],
             "target_domain": row["domain2"],
             "bridge_concept": bridge_concept,
-            "evidence_a": row["node1_label"],
-            "evidence_b": row["node2_label"],
+            # Store actual chunk text — downstream agents (hypothesis_formulator)
+            # and the EdgeInspector "evidence side by side" panel use these.
+            "evidence_a": evidence_a[:500] if evidence_a else row["node1_label"],
+            "evidence_b": evidence_b[:500] if evidence_b else row["node2_label"],
             "cosine_similarity": float(row["similarity"]),
             "confidence": confidence,
             "is_multi_hop": False,
@@ -158,10 +291,14 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
         validated_bridges.append(bridge)
         already_paired.add(pair_key)
 
-        # Persist edge
         await _persist_bridge_edge(session, graph_id, bridge, is_multi_hop=False)
 
-    # ── 3. Multi-hop: A–C validated AND C–B validated → A–B multi-hop ─────────
+        logger.info(
+            "bridge_discoverer: validated bridge '%s' ↔ '%s' — \"%s\" (conf=%.2f)",
+            row["node1_label"], row["node2_label"], bridge_concept, confidence,
+        )
+
+    # ── 5. Multi-hop inference: A–C + C–B → A–B via C ────────────────────────
     direct_pairs = {
         frozenset({b["source_node_id"], b["target_node_id"]}): b
         for b in validated_bridges
@@ -175,7 +312,6 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
         nodes_in_bridges.add(b["target_node_id"])
 
     for node_c in nodes_in_bridges:
-        # Find all bridges that include node_c
         bridges_with_c = [
             b for b in validated_bridges
             if b["source_node_id"] == node_c or b["target_node_id"] == node_c
@@ -212,7 +348,6 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
                 if pair_key in direct_pairs or pair_key in multihop_added:
                     continue
 
-                # Ask LLM for the multihop mechanism
                 try:
                     node_a_label = _get_label_from_bridge(bridge_ac, a_id)
                     node_b_label = _get_label_from_bridge(bridge_cb, b_id)
@@ -226,22 +361,30 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
                         domain_c=domain_c,
                         label_b=node_b_label,
                         domain_b=domain_b,
+                        bridge_ac=bridge_ac["bridge_concept"],
+                        bridge_cb=bridge_cb["bridge_concept"],
                     )
                     result = await loop.run_in_executor(
                         None,
                         lambda p=prompt: llm_provider.complete_json(p, max_tokens=200),
                     )
                     bridge_concept = str(result.get("bridge_concept") or "").strip()[:255]
+                    if not bridge_concept:
+                        continue
                     confidence = min(float(result.get("confidence", 0.55)), 1.0) * 0.85
+
+                    # Propagate chunk evidence from the direct bridges
+                    ev_a = _get_evidence_from_bridge(bridge_ac, a_id)
+                    ev_b = _get_evidence_from_bridge(bridge_cb, b_id)
 
                     mhop: BridgeEdge = {
                         "source_node_id": a_id,
                         "target_node_id": b_id,
                         "source_domain": domain_a,
                         "target_domain": domain_b,
-                        "bridge_concept": bridge_concept or "indirect cross-domain link",
-                        "evidence_a": node_a_label,
-                        "evidence_b": node_b_label,
+                        "bridge_concept": bridge_concept,
+                        "evidence_a": ev_a[:500],
+                        "evidence_b": ev_b[:500],
                         "cosine_similarity": (
                             bridge_ac["cosine_similarity"] + bridge_cb["cosine_similarity"]
                         ) / 2,
@@ -255,8 +398,7 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
                 except Exception as exc:
                     logger.warning("bridge_discoverer: multi-hop LLM failed — %s", exc)
 
-    # ── 4. Intra-domain similarity edges (always run, gives the graph structure
-    #        even when all concepts share one domain) ───────────────────────────
+    # ── 6. Intra-domain similarity edges (graph structure scaffolding) ─────────
     intra_edges: list[BridgeEdge] = []
     try:
         intra_candidates = await vs.intra_domain_similarity_search(
@@ -327,7 +469,8 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
             "bridges_found": len(validated_bridges),
             "multihop_bridges": len(multihop_bridges),
             "intra_domain_edges": len(intra_edges),
-            "candidates_evaluated": len(candidates),
+            "candidates_evaluated": len(non_trivial),
+            "sibling_pairs_filtered": len(candidates) - len(non_trivial),
             "total_edges": len(all_bridges),
         },
     )
@@ -338,7 +481,9 @@ async def bridge_discoverer_node(state: ResearchState, config: RunnableConfig) -
     }
 
 
-async def _persist_bridge_edge(session, graph_id: str, bridge: BridgeEdge, *, is_multi_hop: bool) -> None:
+async def _persist_bridge_edge(
+    session, graph_id: str, bridge: BridgeEdge, *, is_multi_hop: bool
+) -> None:
     session.add(
         Edge(
             id=uuid4(),
@@ -366,14 +511,20 @@ async def _persist_bridge_edge(session, graph_id: str, bridge: BridgeEdge, *, is
 
 def _get_label_from_bridge(bridge: BridgeEdge, node_id: str) -> str:
     if bridge["source_node_id"] == node_id:
+        return bridge["evidence_a"].split(" [...] ")[0][:80] or bridge["source_domain"]
+    return bridge["evidence_b"].split(" [...] ")[0][:80] or bridge["target_domain"]
+
+
+def _get_evidence_from_bridge(bridge: BridgeEdge, node_id: str) -> str:
+    if bridge["source_node_id"] == node_id:
         return bridge["evidence_a"]
     return bridge["evidence_b"]
 
 
 def _get_intermediate_label(bridge_ac: BridgeEdge, bridge_cb: BridgeEdge, node_c: str) -> str:
     if bridge_ac["source_node_id"] == node_c:
-        return bridge_ac["evidence_a"]
-    return bridge_ac["evidence_b"]
+        return bridge_ac["evidence_a"].split(" [...] ")[0][:80]
+    return bridge_ac["evidence_b"].split(" [...] ")[0][:80]
 
 
 def _get_intermediate_domain(bridge: BridgeEdge, node_c: str) -> str:

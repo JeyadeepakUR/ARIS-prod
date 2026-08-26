@@ -129,7 +129,9 @@ export function computeGraphLayout(
   // Add real edges so dagre keeps connected nodes nearby.
   for (const edge of workingEdges) {
     if (!g.hasNode(edge.source) || !g.hasNode(edge.target)) continue;
-    // Bridges should pull endpoints close to convey the relationship.
+    // Skip extracted_from — concept→document creates a cycle with the
+    // document→domain layer edges above, causing dagre to produce NaN positions.
+    if (edge.data?.edge_type === "extracted_from") continue;
     const isBridge =
       edge.data?.edge_type === "cross_domain_bridge" ||
       edge.data?.edge_category === "INTER_DOMAIN_BRIDGE";
